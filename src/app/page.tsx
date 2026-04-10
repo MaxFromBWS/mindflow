@@ -14,30 +14,73 @@ export default function HomePage() {
   const [input, setInput] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!input.trim()) return;
 
     setLoading(true);
     setResult(null);
+    setError(null);
 
-    setTimeout(() => {
-      setResult({
-        goal: "Понять, как достичь желаемого результата",
-        problem: "Сейчас цель сформулирована общо, без конкретного плана и опоры на первый шаг",
-        steps: [
-          "Уточнить, что именно ты хочешь получить в итоге",
-          "Разбить большую цель на маленькие шаги",
-          "Выбрать один простой шаг, который можно сделать сегодня",
-        ],
-        risks: [
-          "Прокрастинация из-за слишком общей формулировки",
-          "Потеря мотивации без быстрого результата",
-        ],
-        firstStep: "Запиши на листе бумаги или в заметках, что для тебя будет конкретным успешным результатом",
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ input }),
       });
+
+      const rawText = await response.text();
+      let data: AnalysisResult | { error?: string };
+      if (!rawText.trim()) {
+        setError(
+          response.ok
+            ? "Пустой ответ сервера"
+            : `Ошибка ${response.status}: пустой ответ`,
+        );
+        return;
+      }
+      try {
+        data = JSON.parse(rawText) as AnalysisResult | { error?: string };
+      } catch {
+        setError("Сервер вернул не JSON. Проверьте консоль сервера и перезапустите dev.");
+        return;
+      }
+
+      if (!response.ok) {
+        setError(
+          typeof data === "object" &&
+            data !== null &&
+            "error" in data &&
+            typeof data.error === "string"
+            ? data.error
+            : `Ошибка ${response.status}`,
+        );
+        return;
+      }
+
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "goal" in data &&
+        "problem" in data &&
+        "steps" in data &&
+        "risks" in data &&
+        "firstStep" in data
+      ) {
+        setResult(data as AnalysisResult);
+      } else {
+        setError("Неожиданный формат ответа");
+      }
+    } catch (e) {
+      console.error(e);
+      setError("Не удалось выполнить запрос");
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -64,41 +107,59 @@ export default function HomePage() {
 
       {loading && <p className="text-gray-500">Анализируем мысль...</p>}
 
+      {error && (
+        <p className="text-red-600 text-center max-w-xl" role="alert">
+          {error}
+        </p>
+      )}
+
       {result && (
-        <section className="w-full max-w-4xl grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border p-4">
-            <h2 className="mb-2 text-xl font-semibold">Цель</h2>
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl w-full">
+
+          <div className="p-5 border rounded-xl shadow-sm">
+            <h2 className="font-bold text-lg mb-2">
+              {"\u{1F3AF} Цель"}
+            </h2>
             <p>{result.goal}</p>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <h2 className="mb-2 text-xl font-semibold">Проблема</h2>
+          <div className="p-5 border rounded-xl shadow-sm">
+            <h2 className="font-bold text-lg mb-2">
+              {"\u{26A0}\u{FE0F} Проблема"}
+            </h2>
             <p>{result.problem}</p>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <h2 className="mb-2 text-xl font-semibold">Шаги</h2>
-            <ul className="list-disc pl-5 space-y-2">
-              {result.steps.map((step, index) => (
-                <li key={index}>{step}</li>
+          <div className="p-5 border rounded-xl shadow-sm">
+            <h2 className="font-bold text-lg mb-2">
+              {"\u{1F4CC} Шаги"}
+            </h2>
+            <ul className="list-disc pl-5 space-y-1">
+              {result.steps.map((step: string, i: number) => (
+                <li key={i}>{step}</li>
               ))}
             </ul>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <h2 className="mb-2 text-xl font-semibold">Риски</h2>
-            <ul className="list-disc pl-5 space-y-2">
-              {result.risks.map((risk, index) => (
-                <li key={index}>{risk}</li>
+          <div className="p-5 border rounded-xl shadow-sm">
+            <h2 className="font-bold text-lg mb-2">
+              {"\u{1F6A7} Риски"}
+            </h2>
+            <ul className="list-disc pl-5 space-y-1">
+              {result.risks.map((risk: string, i: number) => (
+                <li key={i}>{risk}</li>
               ))}
             </ul>
           </div>
 
-          <div className="rounded-xl border p-4 md:col-span-2">
-            <h2 className="mb-2 text-xl font-semibold">Первый шаг</h2>
+          <div className="p-5 border rounded-xl shadow-sm md:col-span-2 bg-black text-white">
+            <h2 className="font-bold text-lg mb-2">
+              {"\u{1F680} Первый шаг"}
+            </h2>
             <p>{result.firstStep}</p>
           </div>
-        </section>
+
+        </div>
       )}
     </main>
   );
