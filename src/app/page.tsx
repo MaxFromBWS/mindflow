@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type AnalysisResult = {
   goal: string;
@@ -10,11 +10,80 @@ type AnalysisResult = {
   firstStep: string;
 };
 
+// Одна запись истории: что спросили и какой ответ получили
+type HistoryItem = {
+  input: string;
+  result: AnalysisResult;
+};
+
+const HISTORY_STORAGE_KEY = "mindflow:analysis-history";
+
+// Безопасно читаем массив истории из JSON (если формат битый — не падаем)
+function parseHistoryFromStorage(raw: string): HistoryItem[] {
+  try {
+    const data: unknown = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+
+    const items: HistoryItem[] = [];
+    for (const entry of data) {
+      if (
+        typeof entry === "object" &&
+        entry !== null &&
+        "input" in entry &&
+        "result" in entry &&
+        typeof (entry as HistoryItem).input === "string"
+      ) {
+        const r = (entry as HistoryItem).result;
+        if (
+          typeof r === "object" &&
+          r !== null &&
+          typeof r.goal === "string" &&
+          typeof r.problem === "string" &&
+          Array.isArray(r.steps) &&
+          Array.isArray(r.risks) &&
+          typeof r.firstStep === "string"
+        ) {
+          items.push({ input: (entry as HistoryItem).input, result: r });
+        }
+      }
+    }
+    return items;
+  } catch {
+    return [];
+  }
+}
+
 export default function HomePage() {
   const [input, setInput] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  // Пока false — не пишем в storage, чтобы не затереть данные пустым [] до setHistory из чтения
+  const [storageHydrated, setStorageHydrated] = useState(false);
+
+  // После монтирования на клиенте подтягиваем историю из localStorage (на сервере не трогаем)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (raw) {
+        setHistory(parseHistoryFromStorage(raw));
+      }
+    } catch {
+      // Нет доступа к storage / приватный режим — просто остаёмся с пустой историей
+    }
+    setStorageHydrated(true);
+  }, []);
+
+  // Любое изменение history — пишем в localStorage только после первой загрузки из него
+  useEffect(() => {
+    if (!storageHydrated) return;
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+    } catch {
+      // Игнорируем квоту и прочие ошибки записи
+    }
+  }, [history, storageHydrated]);
 
   const handleAnalyze = async () => {
     if (!input.trim()) return;
@@ -71,7 +140,10 @@ export default function HomePage() {
         "risks" in data &&
         "firstStep" in data
       ) {
-        setResult(data as AnalysisResult);
+        const analysis = data as AnalysisResult;
+        setResult(analysis);
+        // Успешный анализ — добавляем в историю (новые сверху)
+        setHistory((prev) => [{ input: input.trim(), result: analysis }, ...prev]);
       } else {
         setError("Неожиданный формат ответа");
       }
