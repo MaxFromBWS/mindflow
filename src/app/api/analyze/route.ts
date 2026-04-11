@@ -109,6 +109,24 @@ export async function POST(req: Request) {
     );
   }
 
+  const rawMode =
+    typeof body === "object" &&
+    body !== null &&
+    "selectedMode" in body &&
+    typeof (body as { selectedMode: unknown }).selectedMode === "string"
+      ? (body as { selectedMode: string }).selectedMode.trim()
+      : "career";
+
+  const allowedModes = new Set(["career", "business", "life"]);
+  const selectedMode = allowedModes.has(rawMode) ? rawMode : "career";
+
+  const modeHints: Record<string, string> = {
+    career: "карьера, работа и профессиональный рост",
+    business: "бизнес, проекты, клиенты и монетизация",
+    life: "личная жизнь, отношения, здоровье, быт и саморазвитие вне работы",
+  };
+  const modeHint = modeHints[selectedMode] ?? modeHints.career;
+
   const requestId = randomUUID();
   const prompt = `
 Проанализируй текст пользователя и верни СТРОГО JSON без лишнего текста.
@@ -123,6 +141,8 @@ export async function POST(req: Request) {
 }
 
 Пиши на языке пользователя. Опирайся на конкретные слова и смысл этого текста — не повторяй универсальные шаблоны, если они не следуют из формулировки.
+
+Фокус анализа (обязательно учитывай в трактовке и советах): ${modeHint}.
 
 Текст:
 ${input}

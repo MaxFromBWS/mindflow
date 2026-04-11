@@ -1,92 +1,137 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import {
+  appendHistoryItem,
+  type AnalysisResult,
+} from "@/lib/history-storage";
 
-type AnalysisResult = {
-  goal: string;
-  problem: string;
-  steps: string[];
-  risks: string[];
-  firstStep: string;
-};
+const ANALYSIS_MODES = [
+  { id: "career", label: "Карьера" },
+  { id: "business", label: "Бизнес" },
+  { id: "life", label: "Жизнь" },
+] as const;
 
-// Одна запись истории: что спросили и какой ответ получили
-type HistoryItem = {
-  input: string;
-  result: AnalysisResult;
-};
+type AnalysisModeId = (typeof ANALYSIS_MODES)[number]["id"];
 
-const HISTORY_STORAGE_KEY = "mindflow:analysis-history";
+// Готовые формулировки: по клику подставляем текст и режим (id как в /api/analyze)
+const EXAMPLE_PROMPTS: {
+  id: string;
+  mode: AnalysisModeId;
+  label: string;
+  text: string;
+}[] = [
+  {
+    id: "ex-career-1",
+    mode: "career",
+    label: "Рост до senior",
+    text:
+      "Хочу перейти из middle в senior, но не понимаю, чего не хватает в моём профиле и с чего начать.",
+  },
+  {
+    id: "ex-career-2",
+    mode: "career",
+    label: "Смена сферы",
+    text:
+      "Работаю бухгалтером и хочу войти в IT как аналитик — с чего начать без опыта в новой области?",
+  },
+  {
+    id: "ex-business-1",
+    mode: "business",
+    label: "Первые клиенты",
+    text:
+      "Запускаю небольшую студию по дизайну. Как найти первых заказчиков и не продешевить на старте?",
+  },
+  {
+    id: "ex-life-1",
+    mode: "life",
+    label: "Баланс и усталость",
+    text:
+      "После работы нет сил на семью и спорт. Хочу расставить приоритеты и перестать выгорать — с чего начать?",
+  },
+];
 
-// Безопасно читаем массив истории из JSON (если формат битый — не падаем)
-function parseHistoryFromStorage(raw: string): HistoryItem[] {
-  try {
-    const data: unknown = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
-
-    const items: HistoryItem[] = [];
-    for (const entry of data) {
-      if (
-        typeof entry === "object" &&
-        entry !== null &&
-        "input" in entry &&
-        "result" in entry &&
-        typeof (entry as HistoryItem).input === "string"
-      ) {
-        const r = (entry as HistoryItem).result;
-        if (
-          typeof r === "object" &&
-          r !== null &&
-          typeof r.goal === "string" &&
-          typeof r.problem === "string" &&
-          Array.isArray(r.steps) &&
-          Array.isArray(r.risks) &&
-          typeof r.firstStep === "string"
-        ) {
-          items.push({ input: (entry as HistoryItem).input, result: r });
-        }
-      }
-    }
-    return items;
-  } catch {
-    return [];
-  }
+function formatAnalysisForClipboard(r: AnalysisResult): string {
+  const stepsBlock = r.steps.map((s) => `• ${s}`).join("\n");
+  const risksBlock = r.risks.map((s) => `• ${s}`).join("\n");
+  return [
+    "Цель",
+    r.goal,
+    "",
+    "Проблема",
+    r.problem,
+    "",
+    "Шаги",
+    stepsBlock,
+    "",
+    "Риски",
+    risksBlock,
+    "",
+    "Первый шаг",
+    r.firstStep,
+  ].join("\n");
 }
 
+// Три шага для блока «Как это работает» (только контент, без логики)
+const HOW_IT_WORKS_STEPS = [
+  {
+    emoji: "\u{270F}\u{FE0F}",
+    title: "Ввод мысли",
+    description:
+      "Опишите ситуацию своими словами и при необходимости выберите фокус: карьера, бизнес или жизнь.",
+  },
+  {
+    emoji: "\u{2728}",
+    title: "Анализ AI",
+    description:
+      "Модель структурирует запрос: цель, проблема, шаги, риски — с опорой на ваш текст.",
+  },
+  {
+    emoji: "\u{1F4CB}",
+    title: "Готовый план",
+    description:
+      "Сразу видно, с чего начать: конкретный первый шаг и ясная последовательность действий.",
+  },
+] as const;
+
+const resultCardShell =
+  "rounded-2xl border p-6 shadow-[0_2px_20px_-4px_rgba(0,0,0,0.08)]";
+const resultCardMuted = `${resultCardShell} border-gray-200/90 bg-white`;
+const resultCardTitleClass =
+  "text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3";
+const resultBodyClass = "text-gray-800 leading-relaxed";
+const resultListClass = "list-disc pl-5 space-y-2 leading-relaxed text-gray-800";
+
 export default function HomePage() {
+  const [selectedMode, setSelectedMode] = useState<AnalysisModeId>("career");
   const [input, setInput] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  // Пока false — не пишем в storage, чтобы не затереть данные пустым [] до setHistory из чтения
-  const [storageHydrated, setStorageHydrated] = useState(false);
+  const [resultVisible, setResultVisible] = useState(false);
 
-  // После монтирования на клиенте подтягиваем историю из localStorage (на сервере не трогаем)
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-      if (raw) {
-        setHistory(parseHistoryFromStorage(raw));
-      }
-    } catch {
-      // Нет доступа к storage / приватный режим — просто остаёмся с пустой историей
-    }
-    setStorageHydrated(true);
-  }, []);
+  const formSectionRef = useRef<HTMLDivElement>(null);
 
-  // Любое изменение history — пишем в localStorage только после первой загрузки из него
   useEffect(() => {
-    if (!storageHydrated) return;
-    try {
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-    } catch {
-      // Игнорируем квоту и прочие ошибки записи
+    if (!result) {
+      setResultVisible(false);
+      return;
     }
-  }, [history, storageHydrated]);
+    setResultVisible(false);
+    const id = window.setTimeout(() => setResultVisible(true), 30);
+    return () => window.clearTimeout(id);
+  }, [result]);
+
+  const applyExample = (mode: AnalysisModeId, text: string) => {
+    setSelectedMode(mode);
+    setInput(text);
+    setError(null);
+  };
 
   const handleAnalyze = async () => {
-    if (!input.trim()) return;
+    const trimmedInput = input.trim();
+    if (!trimmedInput) return;
 
     setLoading(true);
     setResult(null);
@@ -99,7 +144,10 @@ export default function HomePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ input }),
+        body: JSON.stringify({
+          input: trimmedInput,
+          selectedMode,
+        }),
       });
 
       const rawText = await response.text();
@@ -142,8 +190,8 @@ export default function HomePage() {
       ) {
         const analysis = data as AnalysisResult;
         setResult(analysis);
-        // Успешный анализ — добавляем в историю (новые сверху)
-        setHistory((prev) => [{ input: input.trim(), result: analysis }, ...prev]);
+        appendHistoryItem(trimmedInput, analysis, selectedMode);
+        setInput("");
       } else {
         setError("Неожиданный формат ответа");
       }
@@ -155,29 +203,134 @@ export default function HomePage() {
     }
   };
 
+  const handleCopyResult = async () => {
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(formatAnalysisForClipboard(result));
+    } catch {
+      // браузер не дал доступ к буферу
+    }
+  };
+
+  const handleNewRequest = () => {
+    setResult(null);
+    setInput("");
+    setError(null);
+    formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8 gap-6">
       <h1 className="text-4xl font-bold">MindFlow</h1>
 
-      <p className="text-gray-500 text-center whitespace-nowrap">
-        Преврати свои мысли в чёткий план действий с помощью AI
-      </p>
-
-      <textarea
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Например: хочу сменить работу, но не понимаю с чего начать"
-        className="w-full max-w-xl p-4 border rounded-xl"
-      />
-
-      <button
-        onClick={handleAnalyze}
-        className="px-6 py-3 bg-black text-white rounded-xl"
+      <div
+        ref={formSectionRef}
+        className="flex flex-col items-center gap-6 w-full max-w-xl"
       >
-        Разобрать
-      </button>
+        <p className="text-gray-500 text-center whitespace-nowrap">
+          Преврати свои мысли в чёткий план действий с помощью AI
+        </p>
 
-      {loading && <p className="text-gray-500">Анализируем мысль...</p>}
+        <section
+          className="w-full max-w-3xl"
+          aria-labelledby="how-it-works-title"
+        >
+          <h2
+            id="how-it-works-title"
+            className="text-center text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3"
+          >
+            Как это работает
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {HOW_IT_WORKS_STEPS.map((step) => (
+              <div
+                key={step.title}
+                className="rounded-xl border border-gray-200/90 bg-white px-4 py-4 shadow-[0_1px_12px_-4px_rgba(0,0,0,0.06)]"
+              >
+                <p className="text-lg mb-2" aria-hidden>
+                  {step.emoji}
+                </p>
+                <p className="text-sm font-semibold text-gray-900 mb-1.5">
+                  {step.title}
+                </p>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  {step.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="w-full flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Режим анализа
+          </span>
+          <div
+            className="flex rounded-xl border border-gray-200 bg-gray-50/80 p-1 gap-1"
+            role="group"
+            aria-label="Режим анализа"
+          >
+            {ANALYSIS_MODES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setSelectedMode(m.id)}
+                disabled={loading}
+                className={`flex-1 min-w-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                  selectedMode === m.id
+                    ? "bg-black text-white shadow-sm"
+                    : "text-gray-700 hover:bg-white/90"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Например: хочу сменить работу, но не понимаю с чего начать"
+          className="w-full max-w-xl p-4 border rounded-xl"
+        />
+
+        <div className="w-full flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Примеры запросов
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLE_PROMPTS.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                disabled={loading}
+                onClick={() => applyExample(ex.mode, ex.text)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm font-medium text-gray-800 shadow-[0_1px_8px_-2px_rgba(0,0,0,0.06)] transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 justify-center w-full">
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={loading}
+            className="px-6 py-3 bg-black text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Анализируем..." : "Разобрать"}
+          </button>
+          <Link
+            href="/history"
+            className="px-6 py-3 border border-gray-300 rounded-xl text-center hover:border-gray-400 transition-colors"
+          >
+            Открыть историю
+          </Link>
+        </div>
+      </div>
 
       {error && (
         <p className="text-red-600 text-center max-w-xl" role="alert">
@@ -186,51 +339,84 @@ export default function HomePage() {
       )}
 
       {result && (
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl w-full">
-
-          <div className="p-5 border rounded-xl shadow-sm">
-            <h2 className="font-bold text-lg mb-2">
-              {"\u{1F3AF} Цель"}
+        <div
+          className={`w-full max-w-4xl mt-6 flex flex-col gap-6 transition-all duration-500 ease-out ${
+            resultVisible
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 translate-y-3"
+          }`}
+        >
+          <div className="text-center md:text-left">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500">
+              Результат анализа
             </h2>
-            <p>{result.goal}</p>
           </div>
 
-          <div className="p-5 border rounded-xl shadow-sm">
-            <h2 className="font-bold text-lg mb-2">
-              {"\u{26A0}\u{FE0F} Проблема"}
-            </h2>
-            <p>{result.problem}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F3AF} Цель"}
+              </h3>
+              <p className={resultBodyClass}>{result.goal}</p>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{26A0}\u{FE0F} Проблема"}
+              </h3>
+              <p className={resultBodyClass}>{result.problem}</p>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F4CC} Шаги"}
+              </h3>
+              <ul className={resultListClass}>
+                {result.steps.map((step: string, i: number) => (
+                  <li key={i}>{step}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F6A7} Риски"}
+              </h3>
+              <ul className={resultListClass}>
+                {result.risks.map((risk: string, i: number) => (
+                  <li key={i}>{risk}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div
+              className={`${resultCardShell} md:col-span-2 border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-800 text-white shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]`}
+            >
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-white/70 mb-3">
+                {"\u{1F680} Первый шаг"}
+              </h3>
+              <p className="text-white leading-relaxed text-[1.02rem] font-medium">
+                {result.firstStep}
+              </p>
+            </div>
           </div>
 
-          <div className="p-5 border rounded-xl shadow-sm">
-            <h2 className="font-bold text-lg mb-2">
-              {"\u{1F4CC} Шаги"}
-            </h2>
-            <ul className="list-disc pl-5 space-y-1">
-              {result.steps.map((step: string, i: number) => (
-                <li key={i}>{step}</li>
-              ))}
-            </ul>
+          <div className="flex flex-wrap gap-3 justify-center w-full pt-1">
+            <button
+              type="button"
+              onClick={handleCopyResult}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+            >
+              Скопировать результат
+            </button>
+            <button
+              type="button"
+              onClick={handleNewRequest}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+            >
+              Новый запрос
+            </button>
           </div>
-
-          <div className="p-5 border rounded-xl shadow-sm">
-            <h2 className="font-bold text-lg mb-2">
-              {"\u{1F6A7} Риски"}
-            </h2>
-            <ul className="list-disc pl-5 space-y-1">
-              {result.risks.map((risk: string, i: number) => (
-                <li key={i}>{risk}</li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="p-5 border rounded-xl shadow-sm md:col-span-2 bg-black text-white">
-            <h2 className="font-bold text-lg mb-2">
-              {"\u{1F680} Первый шаг"}
-            </h2>
-            <p>{result.firstStep}</p>
-          </div>
-
         </div>
       )}
     </main>
