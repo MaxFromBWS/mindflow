@@ -170,6 +170,22 @@ const resultCardTitleClass =
 const resultBodyClass = "text-gray-800 leading-relaxed";
 const resultListClass = "list-disc pl-5 space-y-2 leading-relaxed text-gray-800";
 
+function getPlanStageLabel(rawStep: string, index: number): string {
+  const trimmed = rawStep.trim();
+  const weekMatch = /^неделя\s*(\d+)/i.exec(trimmed);
+  if (weekMatch?.[1]) return `Неделя ${weekMatch[1]}`;
+  const stageMatch = /^этап\s*(\d+)/i.exec(trimmed);
+  if (stageMatch?.[1]) return `Этап ${stageMatch[1]}`;
+  return `Этап ${index + 1}`;
+}
+
+function stripStagePrefix(rawStep: string): string {
+  return rawStep
+    .replace(/^неделя\s*\d+\s*:\s*/i, "")
+    .replace(/^этап\s*\d+\s*:\s*/i, "")
+    .trim();
+}
+
 export default function HomePage() {
   const [selectedMode, setSelectedMode] = useState<AnalysisModeId>("career");
   const [input, setInput] = useState("");
@@ -529,13 +545,24 @@ export default function HomePage() {
               <h3 className={resultCardTitleClass}>
                 {"\u{1F4C5} План на 30 дней"}
               </h3>
-              <ul className={resultListClass}>
+              <ol className="space-y-3">
                 {(Array.isArray(result.plan30Days) ? result.plan30Days : []).map(
                   (step: string, i: number) => (
-                    <li key={i}>{step}</li>
+                    <li key={i} className="relative pl-4">
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-1 h-2.5 w-2.5 rounded-full bg-gray-900"
+                      />
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        {getPlanStageLabel(step, i)}
+                      </p>
+                      <p className="text-sm leading-relaxed text-gray-800">
+                        {stripStagePrefix(step) || step}
+                      </p>
+                    </li>
                   ),
                 )}
-              </ul>
+              </ol>
             </div>
 
             <div className={resultCardMuted}>
