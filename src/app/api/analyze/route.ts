@@ -76,6 +76,105 @@ function resolveApiKey(): string | undefined {
   return keyOpenAI || undefined;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("429") ||
+    lower.includes("rate limit") ||
+    lower.includes("too many requests")
+  );
+}
+
+function resolveModelCandidates(): string[] {
+  const primary = (process.env.OPENAI_MODEL ?? "gpt-4o-mini").trim();
+  const fallbackRaw = process.env.OPENAI_FALLBACK_MODELS?.trim() ?? "";
+  const fallback = fallbackRaw
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0);
+  return Array.from(new Set([primary, ...fallback]));
+}
+
+function estimateTimeframe(input: string, adjustment: string): string {
+  const text = `${input} ${adjustment}`.toLowerCase();
+  if (
+    text.includes("срочно") ||
+    text.includes("быстро") ||
+    text.includes("сегодня") ||
+    text.includes("завтра")
+  ) {
+    return "2 недели";
+  }
+  if (
+    text.includes("работ") ||
+    text.includes("бизнес") ||
+    text.includes("клиент") ||
+    text.includes("доход")
+  ) {
+    return "2 месяца";
+  }
+  return "1 месяц";
+}
+
+function buildLocalFallbackPlan(
+  input: string,
+  modeHint: string,
+  adjustment: string,
+  currentResult: AnalysisApiResponse | null,
+): AnalysisApiResponse {
+  const timeframe = estimateTimeframe(input, adjustment);
+  const focus = adjustment || input;
+  const goalBase =
+    currentResult?.goal ||
+    `Достичь практического результата по направлению: ${modeHint}.`;
+  const constraintPart = adjustment
+    ? `С учётом уточнения: ${adjustment}.`
+    : "";
+
+  return {
+    goal: goalBase,
+    problem: `Сейчас нет стабильного плана с измеримыми этапами и понятными ограничениями. ${constraintPart}`.trim(),
+    steps: [
+      "Определить конечный результат в одном измеримом критерии на выбранный срок.",
+      "Собрать ограничения: доступное время, бюджет, обязательства и доступные ресурсы.",
+      "Разбить цель на 3-5 действий и поставить их в календарь на ближайшие 7 дней.",
+    ],
+    risks: [
+      "Слишком общий план без конкретных действий по дням.",
+      "Потеря фокуса из-за отсутствия еженедельной проверки прогресса.",
+    ],
+    firstStep:
+      "Сегодня выделить 30 минут, зафиксировать 1 измеримую цель и поставить в календарь первое действие на завтра.",
+    timeframe,
+    plan: [
+      `Этап 1 (первые 7 дней): уточнить цель, критерий результата и рабочие ограничения.`,
+      `Этап 2: выполнить ключевые действия по плану и зафиксировать первый измеримый прогресс.`,
+      `Этап 3: провести ревизию плана, убрать узкие места и усилить работающие действия.`,
+      `Финальный этап (${timeframe}): закрепить результат и определить следующий цикл роста.`,
+    ],
+    metrics: [
+      "Количество выполненных запланированных действий за неделю.",
+      "Часы фокусной работы над целью в неделю.",
+      "Главный результат в цифрах (доход, отклики, заявки, встречи и т.д.).",
+    ],
+    resources: [
+      "Время: минимум 30-60 минут в день на приоритетные задачи.",
+      "Навыки: 1-2 ключевых навыка, которые прямо влияют на цель.",
+      "Инструменты: календарь/трекер задач и еженедельный обзор прогресса.",
+    ],
+    mistakes: [
+      "Откладывать практические действия и заниматься только подготовкой.",
+      "Не фиксировать прогресс и не корректировать план каждую неделю.",
+      "Игнорировать реальные ограничения по времени и ресурсам.",
+    ],
+  };
+}
+
 type AnalysisApiResponse = {
   goal: string;
   problem: string;
@@ -307,45 +406,78 @@ ${adjustment}`
     ? Math.min(2, Math.max(0, tEnv))
     : 0.75;
 
+  const modelCandidates = resolveModelCandidates();
+  const retryDelaysMs = [1200, 2500];
+
   try {
-    const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-      temperature,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
+    let lastError: unknown = null;
+    let normalized: AnalysisApiResponse | null = null;
 
-    // У части моделей/провайдеров choices может быть пустым — не обращаемся к [0] напрямую
-    const messageContent = response.choices?.[0]?.message?.content;
-    const text = typeof messageContent === "string" ? messageContent : "";
-    if (!text.trim()) {
-      return Response.json(
-        {
-          error:
-            "Модель вернула пустой ответ. Попробуйте ещё раз или смените OPENAI_MODEL в настройках.",
-        },
-        {
-          status: 502,
-          headers: { "Cache-Control": "no-store" },
-        },
-      );
+    for (const model of modelCandidates) {
+      for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+        try {
+          const response = await openai.chat.completions.create({
+            model,
+            temperature,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+          });
+
+          // У части моделей/провайдеров choices может быть пустым — не обращаемся к [0] напрямую
+          const messageContent = response.choices?.[0]?.message?.content;
+          const text = typeof messageContent === "string" ? messageContent : "";
+          if (!text.trim()) {
+            throw new Error(
+              "Модель вернула пустой ответ. Попробуйте ещё раз или смените OPENAI_MODEL в настройках.",
+            );
+          }
+
+          let parsed: unknown;
+
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            throw new Error("Не удалось разобрать ответ модели. Попробуйте запрос ещё раз.");
+          }
+
+          normalized = normalizeAnalysisResponse(parsed);
+          break;
+        } catch (e) {
+          lastError = e;
+          const canRetry =
+            isRateLimitError(e) && attempt < retryDelaysMs.length;
+          if (canRetry) {
+            await sleep(retryDelaysMs[attempt]);
+            continue;
+          }
+          break;
+        }
+      }
+      if (normalized) break;
     }
 
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return Response.json(
-        { error: "Не удалось разобрать ответ модели. Попробуйте запрос ещё раз." },
-        { status: 502, headers: { "Cache-Control": "no-store" } },
-      );
+    if (!normalized) {
+      if (isRateLimitError(lastError)) {
+        const localPlan = buildLocalFallbackPlan(
+          input,
+          modeHint,
+          adjustment,
+          currentResult,
+        );
+        return Response.json(localPlan, {
+          headers: {
+            "Cache-Control": "no-store, max-age=0",
+            Vary: "*",
+          },
+        });
+      }
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("Не удалось получить ответ модели.");
     }
-
-    const normalized = normalizeAnalysisResponse(parsed);
 
     return Response.json(normalized, {
       headers: {

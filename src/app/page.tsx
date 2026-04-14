@@ -303,14 +303,21 @@ export default function HomePage() {
       }
 
       if (!response.ok) {
-        setError(
+        const apiError =
           typeof data === "object" &&
             data !== null &&
             "error" in data &&
             typeof data.error === "string"
             ? data.error
-            : `Ошибка ${response.status}`,
-        );
+            : `Ошибка ${response.status}`;
+        if (response.status === 429) {
+          setError(
+            "Провайдер перегружен или достигнут лимит запросов. Мы уже попытались повторить запрос и переключиться на резервную модель. " +
+              "Попробуйте еще раз через 1-2 минуты.",
+          );
+        } else {
+          setError(apiError);
+        }
         return;
       }
 
@@ -374,14 +381,21 @@ export default function HomePage() {
       }
 
       if (!response.ok) {
-        setError(
+        const apiError =
           typeof data === "object" &&
             data !== null &&
             "error" in data &&
             typeof data.error === "string"
             ? data.error
-            : `Ошибка ${response.status}`,
-        );
+            : `Ошибка ${response.status}`;
+        if (response.status === 429) {
+          setError(
+            "Провайдер перегружен или достигнут лимит запросов. Мы уже попытались повторить запрос и переключиться на резервную модель. " +
+              "Попробуйте еще раз через 1-2 минуты.",
+          );
+        } else {
+          setError(apiError);
+        }
         return;
       }
 
@@ -611,7 +625,7 @@ export default function HomePage() {
                   type="button"
                   disabled={loading}
                   onClick={() => applyExample(ex.mode, ex.text)}
-                  className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] hover:shadow-[0_14px_30px_-20px_rgba(56,189,248,0.8)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] hover:shadow-[0_14px_30px_-20px_rgba(56,189,248,0.8)] active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {ex.label}
                 </button>
@@ -624,9 +638,9 @@ export default function HomePage() {
               type="button"
               onClick={handleAnalyze}
               disabled={loading}
-              className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_10px_36px_-14px_rgba(56,189,248,0.85)] transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_10px_36px_-14px_rgba(56,189,248,0.85)] transition-all duration-300 hover:brightness-110 motion-reduce:transition-none motion-reduce:hover:brightness-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-80 group-hover:animate-[shimmer_1.5s_ease]" />
+              <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-80 group-hover:animate-[shimmer_1.5s_ease] motion-reduce:hidden" />
               {loading ? "Анализируем..." : "Разобрать"}
             </button>
             <Link
@@ -636,6 +650,12 @@ export default function HomePage() {
               Открыть историю
             </Link>
           </div>
+          {loading ? (
+            <p className="mt-3 text-center text-xs text-cyan-100/85">
+              Выполняем анализ. Если провайдер перегружен, автоматически пробуем
+              резервные модели.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -698,7 +718,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <div
-              className={`${resultCardShell} animate-[fadeUp_0.55s_ease-out_both] md:col-span-2 border-cyan-300/25 bg-gradient-to-r from-cyan-400/[0.13] via-cyan-200/[0.06] to-indigo-400/[0.12] shadow-[0_18px_60px_-30px_rgba(56,189,248,0.55)]`}
+              className={`${resultCardShell} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none md:col-span-2 border-cyan-300/25 bg-gradient-to-r from-cyan-400/[0.13] via-cyan-200/[0.06] to-indigo-400/[0.12] shadow-[0_18px_60px_-30px_rgba(56,189,248,0.55)]`}
             >
               <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/85">
                 {"\u{1F680} Первый шаг"}
@@ -709,7 +729,7 @@ export default function HomePage() {
             </div>
 
             {safeTimeframe ? (
-              <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:90ms]`}>
+              <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:90ms]`}>
                 <h3 className={resultCardTitleClass}>
                   {"\u{23F3} Срок"}
                 </h3>
@@ -718,7 +738,7 @@ export default function HomePage() {
             ) : null}
 
             {planWithToday.length > 0 ? (
-              <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:140ms]`}>
+              <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:140ms]`}>
                 <h3 className={resultCardTitleClass}>
                   {"\u{1F4C5} План реализации"}
                 </h3>
@@ -747,21 +767,21 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:180ms]`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:180ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F3AF} Цель"}
               </h3>
               <p className={resultBodyClass}>{result.goal}</p>
             </div>
 
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:220ms]`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:220ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{26A0}\u{FE0F} Проблема"}
               </h3>
               <p className={resultBodyClass}>{result.problem}</p>
             </div>
 
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:260ms]`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:260ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F4CC} Шаги"}
               </h3>
@@ -774,7 +794,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:300ms]`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:300ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F6A7} Риски"}
               </h3>
@@ -787,7 +807,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:340ms]`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:340ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F4CA} Метрики прогресса"}
               </h3>
@@ -800,7 +820,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:380ms]`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:380ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F9F0} Ресурсы"}
               </h3>
@@ -813,7 +833,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:420ms] md:col-span-2`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] motion-reduce:animate-none [animation-delay:420ms] md:col-span-2`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{26D4} Частые ошибки"}
               </h3>
@@ -831,21 +851,21 @@ export default function HomePage() {
             <button
               type="button"
               onClick={handleCopyResult}
-              className="rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 text-sm text-slate-100 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]"
+              className="rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 text-sm text-slate-100 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] motion-reduce:transition-none"
             >
               Скопировать результат
             </button>
             <button
               type="button"
               onClick={handleShareResult}
-              className="rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 text-sm text-slate-100 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]"
+              className="rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 text-sm text-slate-100 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] motion-reduce:transition-none"
             >
               Поделиться
             </button>
             <button
               type="button"
               onClick={handleNewRequest}
-              className="rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 text-sm text-slate-100 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]"
+              className="rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 text-sm text-slate-100 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] motion-reduce:transition-none"
             >
               Новый запрос
             </button>
@@ -866,7 +886,7 @@ export default function HomePage() {
                 type="button"
                 onClick={handleAdjustPlan}
                 disabled={adjusting || !adjustmentInput.trim()}
-                className="rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-all duration-300 hover:brightness-110 motion-reduce:transition-none motion-reduce:hover:brightness-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {adjusting ? "Обновляем..." : "Обновить план"}
               </button>
@@ -900,6 +920,16 @@ export default function HomePage() {
           100% {
             opacity: 1;
             transform: translateY(0);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
           }
         }
       `}</style>
