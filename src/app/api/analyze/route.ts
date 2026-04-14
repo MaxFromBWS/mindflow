@@ -36,6 +36,17 @@ function formatProviderError(e: unknown): string {
   ) {
     return "Неверный или просроченный API-ключ. Проверьте ключ в .env.local.";
   }
+  if (
+    lower.includes("429") ||
+    lower.includes("rate limit") ||
+    lower.includes("too many requests")
+  ) {
+    return (
+      "Провайдер временно ограничил запросы (429): подождите 1–2 минуты и попробуйте снова. " +
+      "На бесплатных моделях лимиты жёстче — при необходимости смените OPENAI_MODEL в .env.local " +
+      "на другую модель с пометкой :free или пополните баланс в OpenRouter."
+    );
+  }
   return msg;
 }
 
