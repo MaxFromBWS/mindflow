@@ -517,6 +517,31 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="w-full max-w-5xl rounded-3xl border border-cyan-300/20 bg-gradient-to-r from-cyan-300/[0.08] via-white/[0.02] to-indigo-300/[0.08] p-5 shadow-[0_20px_70px_-50px_rgba(56,189,248,0.55)] backdrop-blur-md md:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200/85">
+                Дополнительный инструмент
+              </p>
+              <h3 className="text-xl font-semibold tracking-tight text-slate-100">
+                Семейный калькулятор бюджета
+              </h3>
+              <p className="max-w-2xl text-sm text-slate-300/90">
+                Поможет перевести цели в деньги: доходы, расходы, накопления и
+                контроль плана по месяцам в одном месте.
+              </p>
+            </div>
+            <a
+              href="https://maxfrombws.github.io/Family_Budget_Calculator/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-300/[0.14] px-5 py-2.5 text-sm font-semibold text-cyan-100 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-200/60 hover:bg-cyan-300/[0.2] hover:shadow-[0_16px_36px_-22px_rgba(56,189,248,0.95)]"
+            >
+              Открыть семейный калькулятор
+            </a>
+          </div>
+        </section>
+
         <div className="w-full max-w-4xl rounded-3xl border border-white/10 bg-[#0b1220]/80 p-5 shadow-[0_20px_80px_-50px_rgba(56,189,248,0.45)] backdrop-blur-xl md:p-6">
           <div className="w-full flex flex-col gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
