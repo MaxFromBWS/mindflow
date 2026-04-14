@@ -8,7 +8,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 OPENAI_API_KEY=ВАШ_КЛЮЧ_OPENROUTER
 OPENROUTER_API_KEY=ВАШ_КЛЮЧ_OPENROUTER
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_MODEL=meta-llama/llama-3.2-3b-instruct:free
+OPENAI_MODEL=openrouter/free
 OPENAI_HTTP_REFERER=http://localhost:3000
 OPENAI_APP_TITLE=MindFlow
 ```
