@@ -208,6 +208,8 @@ export default function HomePage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
+  const [loadingMaxModels, setLoadingMaxModels] = useState(3);
   const [error, setError] = useState<string | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
@@ -257,6 +259,17 @@ export default function HomePage() {
     };
   }, [actionStatus]);
 
+  useEffect(() => {
+    if (!loading && !adjusting) {
+      setLoadingElapsedSec(0);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setLoadingElapsedSec((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [loading, adjusting]);
+
   const applyExample = (mode: AnalysisModeId, text: string) => {
     setSelectedMode(mode);
     setInput(text);
@@ -284,6 +297,12 @@ export default function HomePage() {
           selectedMode,
         }),
       });
+
+      const maxModelsHeader = response.headers.get("x-mindflow-max-models");
+      const maxModelsParsed = Number(maxModelsHeader);
+      if (Number.isFinite(maxModelsParsed) && maxModelsParsed > 0) {
+        setLoadingMaxModels(Math.floor(maxModelsParsed));
+      }
 
       const rawText = await response.text();
       let data: AnalysisResult | { error?: string };
@@ -361,6 +380,12 @@ export default function HomePage() {
           currentResult: result,
         }),
       });
+
+      const maxModelsHeader = response.headers.get("x-mindflow-max-models");
+      const maxModelsParsed = Number(maxModelsHeader);
+      if (Number.isFinite(maxModelsParsed) && maxModelsParsed > 0) {
+        setLoadingMaxModels(Math.floor(maxModelsParsed));
+      }
 
       const rawText = await response.text();
       let data: AnalysisResult | { error?: string };
@@ -475,6 +500,18 @@ export default function HomePage() {
   const safeTimeframe =
     result && typeof result.timeframe === "string" ? result.timeframe.trim() : "";
   const planWithToday = result ? buildPlanWithToday(result) : [];
+  const loadingStatusText = (() => {
+    const maxModels = Math.max(1, loadingMaxModels);
+    if (loadingElapsedSec < 3) return "Готовим запрос к AI-провайдеру...";
+    if (loadingElapsedSec < 9) return `Пробуем модель 1/${maxModels}...`;
+    if (maxModels >= 2 && loadingElapsedSec < 15) {
+      return `Пробуем модель 2/${maxModels}...`;
+    }
+    if (maxModels >= 3 && loadingElapsedSec < 22) {
+      return `Пробуем модель 3/${maxModels}...`;
+    }
+    return "Провайдер перегружен, переключаемся на резервный режим...";
+  })();
 
   return (
     <main className="relative min-h-screen overflow-x-clip bg-[#07090f] text-slate-100">
@@ -652,8 +689,7 @@ export default function HomePage() {
           </div>
           {loading ? (
             <p className="mt-3 text-center text-xs text-cyan-100/85">
-              Выполняем анализ. Если провайдер перегружен, автоматически пробуем
-              резервные модели.
+              {loadingStatusText} Время ожидания: {loadingElapsedSec} сек.
             </p>
           ) : null}
         </div>
@@ -670,6 +706,9 @@ export default function HomePage() {
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
               AI готовит отчет
+            </p>
+            <p className="mt-2 text-xs text-slate-300/85">
+              {loadingStatusText} Время ожидания: {loadingElapsedSec} сек.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">

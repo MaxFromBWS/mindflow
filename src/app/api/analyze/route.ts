@@ -210,6 +210,18 @@ function resolveRetryDelays(): number[] {
   return delays.length > 0 ? delays : [1200, 2500];
 }
 
+function resolveGlobalBudgetMs(): number {
+  const env = Number(process.env.OPENAI_GLOBAL_TIMEOUT_MS);
+  if (!Number.isFinite(env)) return 30000;
+  return Math.max(8000, Math.min(90000, Math.floor(env)));
+}
+
+function resolveMaxModelsToTry(): number {
+  const env = Number(process.env.OPENAI_MAX_MODELS_TO_TRY);
+  if (!Number.isFinite(env)) return 4;
+  return Math.max(1, Math.min(12, Math.floor(env)));
+}
+
 function estimateTimeframe(input: string, adjustment: string): string {
   const text = `${input} ${adjustment}`.toLowerCase();
   if (
@@ -353,19 +365,6 @@ function buildLocalFallbackPlan(
     ],
   };
 }
-
-type AnalysisApiResponse = {
-  goal: string;
-  problem: string;
-  steps: string[];
-  risks: string[];
-  firstStep: string;
-  timeframe: string;
-  plan: string[];
-  metrics: string[];
-  resources: string[];
-  mistakes: string[];
-};
 
 const MODEL_UNAVAILABLE_CACHE = new Map<string, number>();
 const MODEL_UNAVAILABLE_TTL_MS = 10 * 60 * 1000; // 10 минут
@@ -612,10 +611,16 @@ ${adjustment}`
     apiKey,
     process.env.OPENAI_BASE_URL,
   );
+  const maxModelsToTry = resolveMaxModelsToTry();
   const modelCandidates = filterAvailableModels(
     Array.from(new Set([...configuredCandidates, ...dynamicFreeCandidates])),
-  );
+  ).slice(0, maxModelsToTry);
   const retryDelaysMs = resolveRetryDelays();
+  const globalBudgetMs = resolveGlobalBudgetMs();
+  const startedAt = Date.now();
+  const progressHeader = {
+    "X-Mindflow-Max-Models": String(maxModelsToTry),
+  };
 
   try {
     let lastError: unknown = null;
@@ -624,6 +629,9 @@ ${adjustment}`
 
     for (const model of modelCandidates) {
       for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+        if (Date.now() - startedAt > globalBudgetMs) {
+          break;
+        }
         try {
           const response = await openai.chat.completions.create({
             model,
@@ -663,7 +671,9 @@ ${adjustment}`
             break;
           }
           const canRetry =
-            isRateLimitError(e) && attempt < retryDelaysMs.length;
+            isRateLimitError(e) &&
+            attempt < retryDelaysMs.length &&
+            Date.now() - startedAt < globalBudgetMs;
           if (canRetry) {
             await sleep(retryDelaysMs[attempt]);
             continue;
@@ -672,6 +682,7 @@ ${adjustment}`
         }
       }
       if (normalized) break;
+      if (Date.now() - startedAt > globalBudgetMs) break;
     }
 
     if (!normalized) {
@@ -684,7 +695,7 @@ ${adjustment}`
           },
           {
             status: 503,
-            headers: { "Cache-Control": "no-store" },
+            headers: { "Cache-Control": "no-store", ...progressHeader },
           },
         );
       }
@@ -699,6 +710,7 @@ ${adjustment}`
           headers: {
             "Cache-Control": "no-store, max-age=0",
             Vary: "*",
+            ...progressHeader,
           },
         });
       }
@@ -711,6 +723,7 @@ ${adjustment}`
       headers: {
         "Cache-Control": "no-store, max-age=0",
         Vary: "*",
+        ...progressHeader,
       },
     });
   } catch (e) {
@@ -718,7 +731,10 @@ ${adjustment}`
       { error: formatProviderError(e) },
       {
         status: 502,
-        headers: { "Cache-Control": "no-store" },
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Mindflow-Max-Models": String(resolveMaxModelsToTry()),
+        },
       },
     );
   }
