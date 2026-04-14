@@ -15,7 +15,6 @@ const ANALYSIS_MODES = [
 
 type AnalysisModeId = (typeof ANALYSIS_MODES)[number]["id"];
 
-// Готовые формулировки: по клику подставляем текст и режим (id как в /api/analyze)
 const EXAMPLE_PROMPTS: {
   id: string;
   mode: AnalysisModeId;
@@ -73,7 +72,47 @@ function formatAnalysisForClipboard(r: AnalysisResult): string {
   ].join("\n");
 }
 
-// Три шага для блока «Как это работает» (только контент, без логики)
+// Проверка объекта так же, как после ответа AI
+function isAnalysisResult(data: unknown): data is AnalysisResult {
+  if (typeof data !== "object" || data === null) return false;
+  const o = data as Record<string, unknown>;
+  return (
+    typeof o.goal === "string" &&
+    typeof o.problem === "string" &&
+    Array.isArray(o.steps) &&
+    Array.isArray(o.risks) &&
+    o.steps.every((x) => typeof x === "string") &&
+    o.risks.every((x) => typeof x === "string") &&
+    typeof o.firstStep === "string"
+  );
+}
+
+// UTF-8 → base64 для кириллицы в JSON
+function encodeResultForUrl(result: AnalysisResult): string {
+  const json = JSON.stringify(result);
+  return btoa(unescape(encodeURIComponent(json)));
+}
+
+function decodeResultFromParam(encoded: string): AnalysisResult | null {
+  try {
+    const trimmed = encoded.trim();
+    if (!trimmed) return null;
+    const json = decodeURIComponent(escape(atob(trimmed)));
+    const data: unknown = JSON.parse(json);
+    return isAnalysisResult(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function stripDataParamFromUrl(): void {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("data")) return;
+  url.searchParams.delete("data");
+  const qs = url.searchParams.toString();
+  window.history.replaceState({}, "", `${url.pathname}${qs ? `?${qs}` : ""}`);
+}
+
 const HOW_IT_WORKS_STEPS = [
   {
     emoji: "\u{270F}\u{FE0F}",
@@ -112,6 +151,20 @@ export default function HomePage() {
   const [resultVisible, setResultVisible] = useState(false);
 
   const formSectionRef = useRef<HTMLDivElement>(null);
+
+  // Открытие результата по ссылке ?data=... (без запроса к серверу)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("data");
+    if (!raw) return;
+    const decoded = decodeResultFromParam(raw);
+    if (decoded) {
+      setResult(decoded);
+      setError(null);
+    } else {
+      setError("Не удалось открыть результат по ссылке.");
+    }
+  }, []);
 
   useEffect(() => {
     if (!result) {
@@ -192,6 +245,7 @@ export default function HomePage() {
         setResult(analysis);
         appendHistoryItem(trimmedInput, analysis, selectedMode);
         setInput("");
+        stripDataParamFromUrl();
       } else {
         setError("Неожиданный формат ответа");
       }
@@ -212,10 +266,25 @@ export default function HomePage() {
     }
   };
 
+  // Полная ссылка с ?data=... в адресной строке + копирование в буфер
+  const handleShareResult = async () => {
+    if (!result) return;
+    try {
+      const encoded = encodeResultForUrl(result);
+      const url = new URL(window.location.href);
+      url.searchParams.set("data", encoded);
+      window.history.replaceState({}, "", url.toString());
+      await navigator.clipboard.writeText(url.toString());
+    } catch {
+      // неверный URL или нет доступа к буферу
+    }
+  };
+
   const handleNewRequest = () => {
     setResult(null);
     setInput("");
     setError(null);
+    stripDataParamFromUrl();
     formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -408,6 +477,13 @@ export default function HomePage() {
               className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
             >
               Скопировать результат
+            </button>
+            <button
+              type="button"
+              onClick={handleShareResult}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+            >
+              Поделиться
             </button>
             <button
               type="button"
