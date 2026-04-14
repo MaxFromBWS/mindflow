@@ -464,6 +464,24 @@ export default function HomePage() {
 
   return (
     <main className="relative min-h-screen overflow-x-clip bg-[#07090f] text-slate-100">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07090f]/75 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-3">
+            <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(56,189,248,0.95)]" />
+            <span className="text-sm font-semibold tracking-wide text-slate-100">MindFlow</span>
+            <span className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200/90">
+              AI-first
+            </span>
+          </div>
+          <Link
+            href="/history"
+            className="rounded-lg border border-white/15 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-200 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]"
+          >
+            История
+          </Link>
+        </div>
+      </header>
+
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-80">
         <div className="absolute -top-40 left-1/2 h-[30rem] w-[42rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.24),rgba(99,102,241,0.16),transparent_68%)] blur-2xl" />
         <div className="absolute -right-24 top-1/3 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent_68%)] blur-3xl" />
@@ -577,6 +595,9 @@ export default function HomePage() {
               placeholder="Опишите цель и контекст. Например: хочу сменить работу, но нет ясного плана перехода."
               className="min-h-36 w-full resize-y rounded-xl border border-white/10 bg-[#0a111d] p-4 text-slate-100 placeholder:text-slate-400/80 outline-none transition-all duration-300 focus:border-cyan-300/45 focus:shadow-[0_0_0_1px_rgba(103,232,249,0.35),0_0_24px_-10px_rgba(56,189,248,0.65)]"
             />
+            <p className="mt-2 text-[11px] text-slate-400/90">
+              AI-коуч сформирует практичный план с учетом ограничений и реалистичного срока.
+            </p>
           </div>
 
           <div className="mt-4 w-full flex flex-col gap-2">
@@ -590,7 +611,7 @@ export default function HomePage() {
                   type="button"
                   disabled={loading}
                   onClick={() => applyExample(ex.mode, ex.text)}
-                  className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] hover:shadow-[0_14px_30px_-20px_rgba(56,189,248,0.8)] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] hover:shadow-[0_14px_30px_-20px_rgba(56,189,248,0.8)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {ex.label}
                 </button>
@@ -603,8 +624,9 @@ export default function HomePage() {
               type="button"
               onClick={handleAnalyze}
               disabled={loading}
-              className="rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_10px_36px_-14px_rgba(56,189,248,0.85)] transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_10px_36px_-14px_rgba(56,189,248,0.85)] transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
+              <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-80 group-hover:animate-[shimmer_1.5s_ease]" />
               {loading ? "Анализируем..." : "Разобрать"}
             </button>
             <Link
@@ -623,6 +645,29 @@ export default function HomePage() {
         </p>
       )}
 
+      {loading && (
+        <section className="relative z-10 mx-auto mt-6 w-full max-w-6xl px-6 pb-6">
+          <div className="mb-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
+              AI готовит отчет
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse"
+              >
+                <div className="h-3 w-28 rounded bg-white/10" />
+                <div className="mt-3 h-3 w-full rounded bg-white/10" />
+                <div className="mt-2 h-3 w-11/12 rounded bg-white/10" />
+                <div className="mt-2 h-3 w-9/12 rounded bg-white/10" />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {result && (
         <div
           className={`relative z-10 mx-auto mt-6 flex w-full max-w-6xl flex-col gap-6 px-6 pb-12 transition-all duration-500 ease-out ${
@@ -638,11 +683,22 @@ export default function HomePage() {
             <p className="mt-1 text-sm text-slate-300/85">
               Персональный план достижения цели с конкретными этапами и метриками.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100/90">
+                Actionable
+              </span>
+              <span className="rounded-full border border-indigo-300/30 bg-indigo-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-indigo-100/90">
+                Timeframe detected
+              </span>
+              <span className="rounded-full border border-white/20 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-200">
+                AI-ready plan
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <div
-              className={`${resultCardShell} md:col-span-2 border-cyan-300/25 bg-gradient-to-r from-cyan-400/[0.13] via-cyan-200/[0.06] to-indigo-400/[0.12] shadow-[0_18px_60px_-30px_rgba(56,189,248,0.55)]`}
+              className={`${resultCardShell} animate-[fadeUp_0.55s_ease-out_both] md:col-span-2 border-cyan-300/25 bg-gradient-to-r from-cyan-400/[0.13] via-cyan-200/[0.06] to-indigo-400/[0.12] shadow-[0_18px_60px_-30px_rgba(56,189,248,0.55)]`}
             >
               <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/85">
                 {"\u{1F680} Первый шаг"}
@@ -653,7 +709,7 @@ export default function HomePage() {
             </div>
 
             {safeTimeframe ? (
-              <div className={resultCardMuted}>
+              <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:90ms]`}>
                 <h3 className={resultCardTitleClass}>
                   {"\u{23F3} Срок"}
                 </h3>
@@ -662,13 +718,13 @@ export default function HomePage() {
             ) : null}
 
             {planWithToday.length > 0 ? (
-              <div className={resultCardMuted}>
+              <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:140ms]`}>
                 <h3 className={resultCardTitleClass}>
                   {"\u{1F4C5} План реализации"}
                 </h3>
                 <ol className="space-y-3">
                   {planWithToday.map((step: string, i: number) => (
-                    <li key={i} className="relative pl-6">
+                    <li key={i} className="group relative pl-6">
                       <span
                         aria-hidden
                         className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_0_5px_rgba(56,189,248,0.15)]"
@@ -680,7 +736,7 @@ export default function HomePage() {
                       <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">
                         {getPlanStageLabel(step, i)}
                       </p>
-                      <p className="text-sm leading-relaxed text-slate-100">
+                      <p className="text-sm leading-relaxed text-slate-100 transition-colors duration-300 group-hover:text-cyan-50">
                         {stripStagePrefix(step) || step}
                       </p>
                     </li>
@@ -691,21 +747,21 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
-            <div className={resultCardMuted}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:180ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F3AF} Цель"}
               </h3>
               <p className={resultBodyClass}>{result.goal}</p>
             </div>
 
-            <div className={resultCardMuted}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:220ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{26A0}\u{FE0F} Проблема"}
               </h3>
               <p className={resultBodyClass}>{result.problem}</p>
             </div>
 
-            <div className={resultCardMuted}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:260ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F4CC} Шаги"}
               </h3>
@@ -718,7 +774,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={resultCardMuted}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:300ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F6A7} Риски"}
               </h3>
@@ -731,7 +787,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={resultCardMuted}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:340ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F4CA} Метрики прогресса"}
               </h3>
@@ -744,7 +800,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={resultCardMuted}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:380ms]`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{1F9F0} Ресурсы"}
               </h3>
@@ -757,7 +813,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={`${resultCardMuted} md:col-span-2`}>
+            <div className={`${resultCardMuted} animate-[fadeUp_0.55s_ease-out_both] [animation-delay:420ms] md:col-span-2`}>
               <h3 className={resultCardTitleClass}>
                 {"\u{26D4} Частые ошибки"}
               </h3>
@@ -827,6 +883,26 @@ export default function HomePage() {
           {actionStatus}
         </div>
       ) : null}
+      <style jsx global>{`
+        @keyframes shimmer {
+          0% {
+            transform: translateX(-120%);
+          }
+          100% {
+            transform: translateX(120%);
+          }
+        }
+        @keyframes fadeUp {
+          0% {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </main>
   );
 }
