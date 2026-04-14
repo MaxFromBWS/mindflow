@@ -1,5 +1,20 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Переменные окружения (OpenRouter / OpenAI)
+
+Создайте в корне файл **`.env.local`** (он в `.gitignore` и не попадает в git). Пример:
+
+```env
+OPENAI_API_KEY=ВАШ_КЛЮЧ_OPENROUTER
+OPENROUTER_API_KEY=ВАШ_КЛЮЧ_OPENROUTER
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=mistralai/mistral-7b-instruct
+OPENAI_HTTP_REFERER=http://localhost:3000
+OPENAI_APP_TITLE=MindFlow
+```
+
+Ключ возьмите в [OpenRouter](https://openrouter.ai/keys). После изменения `.env.local` перезапустите dev-сервер.
+
 ## Getting Started
 
 First, run the development server:
