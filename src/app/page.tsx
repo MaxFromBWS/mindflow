@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   appendHistoryItem,
+  normalizeAnalysisResult,
   type AnalysisResult,
 } from "@/lib/history-storage";
 
@@ -54,6 +55,10 @@ const EXAMPLE_PROMPTS: {
 function formatAnalysisForClipboard(r: AnalysisResult): string {
   const stepsBlock = r.steps.map((s) => `• ${s}`).join("\n");
   const risksBlock = r.risks.map((s) => `• ${s}`).join("\n");
+  const plan30DaysBlock = r.plan30Days.map((s) => `• ${s}`).join("\n");
+  const metricsBlock = r.metrics.map((s) => `• ${s}`).join("\n");
+  const resourcesBlock = r.resources.map((s) => `• ${s}`).join("\n");
+  const mistakesBlock = r.mistakes.map((s) => `• ${s}`).join("\n");
   return [
     "Цель",
     r.goal,
@@ -69,22 +74,19 @@ function formatAnalysisForClipboard(r: AnalysisResult): string {
     "",
     "Первый шаг",
     r.firstStep,
+    "",
+    "План на 30 дней",
+    plan30DaysBlock,
+    "",
+    "Метрики прогресса",
+    metricsBlock,
+    "",
+    "Ресурсы",
+    resourcesBlock,
+    "",
+    "Частые ошибки",
+    mistakesBlock,
   ].join("\n");
-}
-
-// Проверка объекта так же, как после ответа AI
-function isAnalysisResult(data: unknown): data is AnalysisResult {
-  if (typeof data !== "object" || data === null) return false;
-  const o = data as Record<string, unknown>;
-  return (
-    typeof o.goal === "string" &&
-    typeof o.problem === "string" &&
-    Array.isArray(o.steps) &&
-    Array.isArray(o.risks) &&
-    o.steps.every((x) => typeof x === "string") &&
-    o.risks.every((x) => typeof x === "string") &&
-    typeof o.firstStep === "string"
-  );
 }
 
 // UTF-8 → base64 для кириллицы в JSON
@@ -99,7 +101,7 @@ function decodeResultFromParam(encoded: string): AnalysisResult | null {
     if (!trimmed) return null;
     const json = decodeURIComponent(escape(atob(trimmed)));
     const data: unknown = JSON.parse(json);
-    return isAnalysisResult(data) ? data : null;
+    return normalizeAnalysisResult(data);
   } catch {
     return null;
   }
@@ -279,16 +281,8 @@ export default function HomePage() {
         return;
       }
 
-      if (
-        typeof data === "object" &&
-        data !== null &&
-        "goal" in data &&
-        "problem" in data &&
-        "steps" in data &&
-        "risks" in data &&
-        "firstStep" in data
-      ) {
-        const analysis = data as AnalysisResult;
+      const analysis = normalizeAnalysisResult(data);
+      if (analysis) {
         setResult(analysis);
         appendHistoryItem(trimmedInput, analysis, selectedMode);
         setInput("");
@@ -526,6 +520,58 @@ export default function HomePage() {
                 {(Array.isArray(result.risks) ? result.risks : []).map(
                   (risk: string, i: number) => (
                     <li key={i}>{risk}</li>
+                  ),
+                )}
+              </ul>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F4C5} План на 30 дней"}
+              </h3>
+              <ul className={resultListClass}>
+                {(Array.isArray(result.plan30Days) ? result.plan30Days : []).map(
+                  (step: string, i: number) => (
+                    <li key={i}>{step}</li>
+                  ),
+                )}
+              </ul>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F4CA} Метрики прогресса"}
+              </h3>
+              <ul className={resultListClass}>
+                {(Array.isArray(result.metrics) ? result.metrics : []).map(
+                  (metric: string, i: number) => (
+                    <li key={i}>{metric}</li>
+                  ),
+                )}
+              </ul>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F9F0} Ресурсы"}
+              </h3>
+              <ul className={resultListClass}>
+                {(Array.isArray(result.resources) ? result.resources : []).map(
+                  (resource: string, i: number) => (
+                    <li key={i}>{resource}</li>
+                  ),
+                )}
+              </ul>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{26D4} Частые ошибки"}
+              </h3>
+              <ul className={resultListClass}>
+                {(Array.isArray(result.mistakes) ? result.mistakes : []).map(
+                  (mistake: string, i: number) => (
+                    <li key={i}>{mistake}</li>
                   ),
                 )}
               </ul>

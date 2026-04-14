@@ -6,6 +6,10 @@ export type AnalysisResult = {
   steps: string[];
   risks: string[];
   firstStep: string;
+  plan30Days: string[];
+  metrics: string[];
+  resources: string[];
+  mistakes: string[];
 };
 
 // id — стабильный ключ для удаления одной записи; у старых JSON без id он добавится при чтении
@@ -18,6 +22,63 @@ export type HistoryItem = {
 };
 
 export const HISTORY_STORAGE_KEY = "mindflow:analysis-history";
+
+function asNonEmptyString(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function asStringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const cleaned = value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+export function normalizeAnalysisResult(data: unknown): AnalysisResult | null {
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  if (
+    typeof obj.goal !== "string" ||
+    typeof obj.problem !== "string" ||
+    !Array.isArray(obj.steps) ||
+    !Array.isArray(obj.risks) ||
+    typeof obj.firstStep !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    goal: asNonEmptyString(obj.goal, "Цель не определена"),
+    problem: asNonEmptyString(obj.problem, "Проблема не определена"),
+    steps: asStringArray(obj.steps, ["Определить следующий практический шаг."]),
+    risks: asStringArray(obj.risks, ["Риск не определен."]),
+    firstStep: asNonEmptyString(
+      obj.firstStep,
+      "Сегодня выделите 30 минут и запланируйте первое действие.",
+    ),
+    plan30Days: asStringArray(obj.plan30Days, [
+      "Неделя 1: определить цель и зафиксировать действия в календаре.",
+      "Неделя 2: выполнить ключевые шаги и зафиксировать промежуточный результат.",
+      "Неделя 3: скорректировать план и убрать узкие места.",
+      "Неделя 4: закрепить результат и определить следующий цикл.",
+    ]),
+    metrics: asStringArray(obj.metrics, [
+      "Количество выполненных действий за неделю.",
+      "Часы, вложенные в ключевую задачу.",
+    ]),
+    resources: asStringArray(obj.resources, [
+      "Время: минимум 30 минут в день.",
+      "Навык: 1 ключевая компетенция для усиления.",
+    ]),
+    mistakes: asStringArray(obj.mistakes, [
+      "Слишком общий план без конкретных действий.",
+      "Отсутствие еженедельной проверки прогресса.",
+    ]),
+  };
+}
 
 // У каждой записи должен быть id; для старых данных один раз дописываем в localStorage
 function ensureAllItemsHaveId(items: HistoryItem[]): HistoryItem[] {
@@ -53,16 +114,10 @@ export function parseHistoryFromStorage(raw: string): HistoryItem[] {
         "result" in entry &&
         typeof (entry as HistoryItem).input === "string"
       ) {
-        const r = (entry as HistoryItem).result;
-        if (
-          typeof r === "object" &&
-          r !== null &&
-          typeof r.goal === "string" &&
-          typeof r.problem === "string" &&
-          Array.isArray(r.steps) &&
-          Array.isArray(r.risks) &&
-          typeof r.firstStep === "string"
-        ) {
+        const normalizedResult = normalizeAnalysisResult(
+          (entry as { result: unknown }).result,
+        );
+        if (normalizedResult) {
           const createdAt =
             "createdAt" in entry &&
             typeof (entry as HistoryItem).createdAt === "number"
@@ -82,7 +137,7 @@ export function parseHistoryFromStorage(raw: string): HistoryItem[] {
           items.push({
             id,
             input: (entry as HistoryItem).input,
-            result: r,
+            result: normalizedResult,
             ...(createdAt !== undefined ? { createdAt } : {}),
             ...(mode !== undefined ? { mode } : {}),
           });
