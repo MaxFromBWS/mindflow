@@ -8,8 +8,9 @@ export type AnalysisResult = {
   firstStep: string;
 };
 
-// createdAt — время сохранения (мс); mode — режим анализа (если был сохранён)
+// id — стабильный ключ для удаления одной записи; у старых JSON без id он добавится при чтении
 export type HistoryItem = {
+  id: string;
   input: string;
   result: AnalysisResult;
   createdAt?: number;
@@ -18,7 +19,26 @@ export type HistoryItem = {
 
 export const HISTORY_STORAGE_KEY = "mindflow:analysis-history";
 
-// Разбор JSON из localStorage: битые данные не роняют приложение
+// У каждой записи должен быть id; для старых данных один раз дописываем в localStorage
+function ensureAllItemsHaveId(items: HistoryItem[]): HistoryItem[] {
+  let migrated = false;
+  const next = items.map((item) => {
+    if (typeof item.id === "string" && item.id.length > 0) {
+      return item;
+    }
+    migrated = true;
+    return { ...item, id: crypto.randomUUID() };
+  });
+  if (migrated) {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // не удалось записать — всё равно вернём next для UI
+    }
+  }
+  return next;
+}
+
 export function parseHistoryFromStorage(raw: string): HistoryItem[] {
   try {
     const data: unknown = JSON.parse(raw);
@@ -53,7 +73,14 @@ export function parseHistoryFromStorage(raw: string): HistoryItem[] {
             typeof (entry as HistoryItem).mode === "string"
               ? (entry as HistoryItem).mode
               : undefined;
+          const id =
+            "id" in entry &&
+            typeof (entry as { id: unknown }).id === "string" &&
+            (entry as { id: string }).id.trim().length > 0
+              ? (entry as { id: string }).id.trim()
+              : "";
           items.push({
+            id,
             input: (entry as HistoryItem).input,
             result: r,
             ...(createdAt !== undefined ? { createdAt } : {}),
@@ -62,19 +89,37 @@ export function parseHistoryFromStorage(raw: string): HistoryItem[] {
         }
       }
     }
-    return items;
+    return ensureAllItemsHaveId(items);
   } catch {
     return [];
   }
 }
 
-// Добавить запись в начало списка и сохранить (вызывается после успешного анализа)
+/** Полная перезапись списка в localStorage */
+export function saveHistoryItems(items: HistoryItem[]): void {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // квота / приватный режим
+  }
+}
+
+/** Удалить всю историю */
+export function clearAllHistory(): void {
+  try {
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
+  } catch {
+    // игнорируем
+  }
+}
+
 export function appendHistoryItem(
   input: string,
   result: AnalysisResult,
   mode?: string,
 ): void {
   const entry: HistoryItem = {
+    id: crypto.randomUUID(),
     input,
     result,
     createdAt: Date.now(),
