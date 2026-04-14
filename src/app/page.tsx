@@ -55,7 +55,8 @@ const EXAMPLE_PROMPTS: {
 function formatAnalysisForClipboard(r: AnalysisResult): string {
   const stepsBlock = r.steps.map((s) => `• ${s}`).join("\n");
   const risksBlock = r.risks.map((s) => `• ${s}`).join("\n");
-  const plan30DaysBlock = r.plan30Days.map((s) => `• ${s}`).join("\n");
+  const planWithToday = buildPlanWithToday(r);
+  const plan30DaysBlock = planWithToday.map((s) => `• ${s}`).join("\n");
   const metricsBlock = r.metrics.map((s) => `• ${s}`).join("\n");
   const resourcesBlock = r.resources.map((s) => `• ${s}`).join("\n");
   const mistakesBlock = r.mistakes.map((s) => `• ${s}`).join("\n");
@@ -71,9 +72,6 @@ function formatAnalysisForClipboard(r: AnalysisResult): string {
     "",
     "Риски",
     risksBlock,
-    "",
-    "Первый шаг",
-    r.firstStep,
     "",
     "План на 30 дней",
     plan30DaysBlock,
@@ -184,6 +182,20 @@ function stripStagePrefix(rawStep: string): string {
     .replace(/^неделя\s*\d+\s*:\s*/i, "")
     .replace(/^этап\s*\d+\s*:\s*/i, "")
     .trim();
+}
+
+function buildPlanWithToday(result: AnalysisResult): string[] {
+  const plan = Array.isArray(result.plan30Days) ? result.plan30Days : [];
+  const firstStep = result.firstStep.trim();
+  if (!firstStep) return plan;
+
+  const normalizedFirst = firstStep.toLowerCase();
+  const alreadyContains = plan.some((step) =>
+    step.toLowerCase().includes(normalizedFirst),
+  );
+  if (alreadyContains) return plan;
+
+  return [`Сегодня: ${firstStep}`, ...plan];
 }
 
 export default function HomePage() {
@@ -487,6 +499,9 @@ export default function HomePage() {
       )}
 
       {result && (
+        (() => {
+          const planWithToday = buildPlanWithToday(result);
+          return (
         <div
           className={`w-full max-w-4xl mt-6 flex flex-col gap-6 transition-all duration-500 ease-out ${
             resultVisible
@@ -546,7 +561,7 @@ export default function HomePage() {
                 {"\u{1F4C5} План на 30 дней"}
               </h3>
               <ol className="space-y-3">
-                {(Array.isArray(result.plan30Days) ? result.plan30Days : []).map(
+                {planWithToday.map(
                   (step: string, i: number) => (
                     <li key={i} className="relative pl-4">
                       <span
@@ -603,17 +618,6 @@ export default function HomePage() {
                 )}
               </ul>
             </div>
-
-            <div
-              className={`${resultCardShell} md:col-span-2 border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-800 text-white shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]`}
-            >
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-white/70 mb-3">
-                {"\u{1F680} Первый шаг"}
-              </h3>
-              <p className="text-white leading-relaxed text-[1.02rem] font-medium">
-                {result.firstStep}
-              </p>
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 justify-center w-full pt-1">
@@ -640,6 +644,8 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+          );
+        })()
       )}
       {actionStatus ? (
         <div
