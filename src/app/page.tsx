@@ -500,18 +500,10 @@ export default function HomePage() {
   const safeTimeframe =
     result && typeof result.timeframe === "string" ? result.timeframe.trim() : "";
   const planWithToday = result ? buildPlanWithToday(result) : [];
-  const loadingStatusText = (() => {
-    const maxModels = Math.max(1, loadingMaxModels);
-    if (loadingElapsedSec < 3) return "Готовим запрос к AI-провайдеру...";
-    if (loadingElapsedSec < 9) return `Пробуем модель 1/${maxModels}...`;
-    if (maxModels >= 2 && loadingElapsedSec < 15) {
-      return `Пробуем модель 2/${maxModels}...`;
-    }
-    if (maxModels >= 3 && loadingElapsedSec < 22) {
-      return `Пробуем модель 3/${maxModels}...`;
-    }
-    return "Провайдер перегружен, переключаемся на резервный режим...";
-  })();
+  const loadingStatusText =
+    loadingElapsedSec < 8
+      ? "Анализируем ваш запрос..."
+      : "Подбираем лучший ответ от AI-провайдеров...";
 
   return (
     <main className="relative min-h-screen overflow-x-clip bg-[#07090f] text-slate-100">
@@ -586,31 +578,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="w-full max-w-5xl rounded-3xl border border-cyan-300/20 bg-gradient-to-r from-cyan-300/[0.08] via-white/[0.02] to-indigo-300/[0.08] p-5 shadow-[0_20px_70px_-50px_rgba(56,189,248,0.55)] backdrop-blur-md md:p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200/85">
-                Дополнительный инструмент
-              </p>
-              <h3 className="text-xl font-semibold tracking-tight text-slate-100">
-                Семейный калькулятор бюджета
-              </h3>
-              <p className="max-w-2xl text-sm text-slate-300/90">
-                Поможет перевести цели в деньги: доходы, расходы, накопления и
-                контроль плана по месяцам в одном месте.
-              </p>
-            </div>
-            <a
-              href="https://maxfrombws.github.io/Family_Budget_Calculator/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-300/[0.14] px-5 py-2.5 text-sm font-semibold text-cyan-100 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-200/60 hover:bg-cyan-300/[0.2] hover:shadow-[0_16px_36px_-22px_rgba(56,189,248,0.95)]"
-            >
-              Открыть семейный калькулятор
-            </a>
-          </div>
-        </section>
-
         <div className="w-full max-w-4xl rounded-3xl border border-white/10 bg-[#0b1220]/80 p-5 shadow-[0_20px_80px_-50px_rgba(56,189,248,0.45)] backdrop-blur-xl md:p-6">
           <div className="w-full flex flex-col gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -670,7 +637,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-5 flex w-full flex-wrap justify-center gap-3">
+          <div className="mt-5 flex w-full justify-center">
             <button
               type="button"
               onClick={handleAnalyze}
@@ -680,19 +647,38 @@ export default function HomePage() {
               <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/45 to-transparent opacity-80 group-hover:animate-[shimmer_1.5s_ease] motion-reduce:hidden" />
               {loading ? "Анализируем..." : "Разобрать"}
             </button>
-            <Link
-              href="/history"
-              className="rounded-xl border border-white/15 bg-white/[0.03] px-6 py-3 text-center text-sm text-slate-200 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]"
-            >
-              Открыть историю
-            </Link>
           </div>
           {loading ? (
             <p className="mt-3 text-center text-xs text-cyan-100/85">
-              {loadingStatusText} Время ожидания: {loadingElapsedSec} сек.
+              {loadingStatusText}
             </p>
           ) : null}
         </div>
+
+        <section className="w-full max-w-5xl rounded-3xl border border-cyan-300/20 bg-gradient-to-r from-cyan-300/[0.08] via-white/[0.02] to-indigo-300/[0.08] p-5 shadow-[0_20px_70px_-50px_rgba(56,189,248,0.55)] backdrop-blur-md md:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200/85">
+                Дополнительный инструмент
+              </p>
+              <h3 className="text-xl font-semibold tracking-tight text-slate-100">
+                Семейный калькулятор бюджета
+              </h3>
+              <p className="max-w-2xl text-sm text-slate-300/90">
+                Нужно посчитать финансы под вашу цель? Откройте калькулятор и
+                проверьте доходы, расходы и накопления по месяцам.
+              </p>
+            </div>
+            <a
+              href="https://maxfrombws.github.io/Family_Budget_Calculator/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-300/[0.14] px-5 py-2.5 text-sm font-semibold text-cyan-100 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-200/60 hover:bg-cyan-300/[0.2] hover:shadow-[0_16px_36px_-22px_rgba(56,189,248,0.95)]"
+            >
+              Открыть семейный калькулятор
+            </a>
+          </div>
+        </section>
       </div>
 
       {error && (
@@ -706,9 +692,6 @@ export default function HomePage() {
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
               AI готовит отчет
-            </p>
-            <p className="mt-2 text-xs text-slate-300/85">
-              {loadingStatusText} Время ожидания: {loadingElapsedSec} сек.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
