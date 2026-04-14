@@ -91,13 +91,46 @@ function isRateLimitError(e: unknown): boolean {
 }
 
 function resolveModelCandidates(): string[] {
+  const base = process.env.OPENAI_BASE_URL?.trim().toLowerCase() ?? "";
+  const isOpenRouter = base.includes("openrouter");
   const primary = (process.env.OPENAI_MODEL ?? "gpt-4o-mini").trim();
   const fallbackRaw = process.env.OPENAI_FALLBACK_MODELS?.trim() ?? "";
   const fallback = fallbackRaw
     .split(",")
     .map((m) => m.trim())
     .filter((m) => m.length > 0);
-  return Array.from(new Set([primary, ...fallback]));
+  const defaultOpenRouterFree = [
+    "openrouter/free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "google/gemma-2-9b-it:free",
+  ];
+  const forceFree = (process.env.OPENROUTER_FORCE_FREE ?? "1").trim() !== "0";
+  const preferred = isOpenRouter && forceFree ? defaultOpenRouterFree : [];
+  return Array.from(new Set([primary, ...fallback, ...preferred]));
+}
+
+function resolveRetryDelays(): number[] {
+  const maxWaitEnv = Number(process.env.OPENAI_RATE_LIMIT_MAX_WAIT_MS);
+  const maxWaitMs = Number.isFinite(maxWaitEnv)
+    ? Math.max(2000, Math.min(120000, maxWaitEnv))
+    : 45000;
+
+  const retryCountEnv = Number(process.env.OPENAI_RATE_LIMIT_RETRY_COUNT);
+  const retryCount = Number.isFinite(retryCountEnv)
+    ? Math.max(1, Math.min(12, Math.floor(retryCountEnv)))
+    : 6;
+
+  const delays: number[] = [];
+  let total = 0;
+  for (let i = 0; i < retryCount; i += 1) {
+    const raw = Math.min(12000, 1000 * 2 ** i);
+    const jitter = Math.floor(Math.random() * 600);
+    const d = raw + jitter;
+    if (total + d > maxWaitMs) break;
+    delays.push(d);
+    total += d;
+  }
+  return delays.length > 0 ? delays : [1200, 2500];
 }
 
 function estimateTimeframe(input: string, adjustment: string): string {
@@ -127,14 +160,83 @@ function buildLocalFallbackPlan(
   adjustment: string,
   currentResult: AnalysisApiResponse | null,
 ): AnalysisApiResponse {
+  const normalizeLoose = (value: string): string =>
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const timeframe = estimateTimeframe(input, adjustment);
   const focus = adjustment || input;
+  const focusLower = normalizeLoose(focus);
+  const isPurchaseGoal =
+    focusLower.includes("купить") ||
+    focusLower.includes("покупк") ||
+    focusLower.includes("накопить");
+  const isMotoGoal =
+    focusLower.includes("мотоцикл") || focusLower.includes("байк");
+  const isAutoGoal =
+    focusLower.includes("машин") || focusLower.includes("авто");
+  const isBigPurchase = isMotoGoal || isAutoGoal;
+  const targetName = isMotoGoal
+    ? "мотоцикл"
+    : isAutoGoal
+      ? "автомобиль"
+      : "покупку";
+
   const goalBase =
     currentResult?.goal ||
-    `Достичь практического результата по направлению: ${modeHint}.`;
+    (isPurchaseGoal
+      ? `Подготовить реалистичный план, чтобы накопить и купить ${targetName} без критичной финансовой перегрузки.`
+      : `Достичь практического результата по направлению: ${modeHint}.`);
   const constraintPart = adjustment
     ? `С учётом уточнения: ${adjustment}.`
     : "";
+
+  if (isPurchaseGoal) {
+    const buyTimeframe = isBigPurchase ? "3-6 месяцев" : "1-3 месяца";
+    return {
+      goal: goalBase,
+      problem:
+        `Сейчас нет прозрачной финансовой модели покупки: итоговой суммы, ежемесячного темпа накоплений и плана действий по доходам/расходам. ${constraintPart}`.trim(),
+      steps: [
+        `Собрать полную стоимость ${targetName}: цена, оформление, экипировка/обслуживание, резерв 10-15%.`,
+        "Рассчитать целевой ежемесячный взнос: (нужная сумма - текущие накопления) / срок в месяцах.",
+        "Сократить 2-3 необязательные категории расходов и направить высвобожденные деньги в отдельный накопительный счет.",
+        "Найти минимум один дополнительный источник дохода на период накопления (подработка, проект, продажа ненужного).",
+      ],
+      risks: [
+        "Недооценить полную стоимость покупки и сопутствующие траты.",
+        "Копить без отдельного счета и регулярно тратить часть накоплений.",
+        "Не учитывать сезонные/разовые расходы и срывать ежемесячный план.",
+      ],
+      firstStep:
+        `Сегодня за 40 минут открыть заметку/таблицу и зафиксировать: целевую сумму покупки ${targetName}, текущие накопления и дедлайн.`,
+      timeframe: buyTimeframe,
+      plan: [
+        `Этап 1 (7 дней): собрать реальные цены на ${targetName}, посчитать полную сумму и определить дедлайн.`,
+        "Этап 2 (2-4 недели): пересобрать бюджет, зафиксировать лимиты расходов и автоматический перевод в накопления.",
+        "Этап 3: выполнять еженедельный план накоплений и усиливать доход на фиксированную сумму.",
+        `Финальный этап (${buyTimeframe}): проверить достижение суммы, сравнить варианты покупки и принять решение.`,
+      ],
+      metrics: [
+        "Сумма накоплений на конец недели/месяца.",
+        "Процент выполнения месячного плана накоплений.",
+        "Фактическая экономия по сокращенным категориям расходов.",
+      ],
+      resources: [
+        "Финансовый трекер (таблица или приложение) для еженедельного контроля.",
+        "Отдельный накопительный счет/копилка без быстрых трат.",
+        "Резерв 10-15% от целевой суммы на непредвиденные расходы.",
+      ],
+      mistakes: [
+        "Ориентироваться только на цену покупки без учета сопутствующих расходов.",
+        "Не фиксировать еженедельный прогресс накоплений.",
+        "Ставить нереалистичный срок и быстро терять мотивацию.",
+      ],
+    };
+  }
 
   return {
     goal: goalBase,
@@ -407,7 +509,7 @@ ${adjustment}`
     : 0.75;
 
   const modelCandidates = resolveModelCandidates();
-  const retryDelaysMs = [1200, 2500];
+  const retryDelaysMs = resolveRetryDelays();
 
   try {
     let lastError: unknown = null;
