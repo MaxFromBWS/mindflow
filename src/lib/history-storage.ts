@@ -6,7 +6,8 @@ export type AnalysisResult = {
   steps: string[];
   risks: string[];
   firstStep: string;
-  plan30Days: string[];
+  timeframe: string;
+  plan: string[];
   metrics: string[];
   resources: string[];
   mistakes: string[];
@@ -59,11 +60,12 @@ export function normalizeAnalysisResult(data: unknown): AnalysisResult | null {
       obj.firstStep,
       "Сегодня выделите 30 минут и запланируйте первое действие.",
     ),
-    plan30Days: asStringArray(obj.plan30Days, [
-      "Неделя 1: определить цель и зафиксировать действия в календаре.",
-      "Неделя 2: выполнить ключевые шаги и зафиксировать промежуточный результат.",
-      "Неделя 3: скорректировать план и убрать узкие места.",
-      "Неделя 4: закрепить результат и определить следующий цикл.",
+    timeframe: asNonEmptyString(obj.timeframe, "1 месяц"),
+    plan: asStringArray(obj.plan ?? obj.plan30Days, [
+      "Этап 1: определить цель и зафиксировать действия в календаре.",
+      "Этап 2: выполнить ключевые шаги и зафиксировать промежуточный результат.",
+      "Этап 3: скорректировать план и убрать узкие места.",
+      "Этап 4: закрепить результат и определить следующий цикл.",
     ]),
     metrics: asStringArray(obj.metrics, [
       "Количество выполненных действий за неделю.",

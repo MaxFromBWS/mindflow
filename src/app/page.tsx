@@ -56,7 +56,7 @@ function formatAnalysisForClipboard(r: AnalysisResult): string {
   const stepsBlock = r.steps.map((s) => `• ${s}`).join("\n");
   const risksBlock = r.risks.map((s) => `• ${s}`).join("\n");
   const planWithToday = buildPlanWithToday(r);
-  const plan30DaysBlock = planWithToday.map((s) => `• ${s}`).join("\n");
+  const planBlock = planWithToday.map((s) => `• ${s}`).join("\n");
   const metricsBlock = r.metrics.map((s) => `• ${s}`).join("\n");
   const resourcesBlock = r.resources.map((s) => `• ${s}`).join("\n");
   const mistakesBlock = r.mistakes.map((s) => `• ${s}`).join("\n");
@@ -73,8 +73,11 @@ function formatAnalysisForClipboard(r: AnalysisResult): string {
     "Риски",
     risksBlock,
     "",
-    "План на 30 дней",
-    plan30DaysBlock,
+    "Срок",
+    r.timeframe,
+    "",
+    "План",
+    planBlock,
     "",
     "Метрики прогресса",
     metricsBlock,
@@ -185,7 +188,7 @@ function stripStagePrefix(rawStep: string): string {
 }
 
 function buildPlanWithToday(result: AnalysisResult): string[] {
-  const plan = Array.isArray(result.plan30Days) ? result.plan30Days : [];
+  const plan = Array.isArray(result.plan) ? result.plan : [];
   const firstStep = result.firstStep.trim();
   if (!firstStep) return plan;
 
@@ -634,7 +637,14 @@ export default function HomePage() {
 
             <div className={resultCardMuted}>
               <h3 className={resultCardTitleClass}>
-                {"\u{1F4C5} План на 30 дней"}
+                {"\u{23F3} Срок"}
+              </h3>
+              <p className={resultBodyClass}>{result.timeframe}</p>
+            </div>
+
+            <div className={resultCardMuted}>
+              <h3 className={resultCardTitleClass}>
+                {"\u{1F4C5} План по этапам"}
               </h3>
               <ol className="space-y-3">
                 {planWithToday.map(
