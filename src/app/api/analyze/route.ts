@@ -174,7 +174,21 @@ ${input}
       messages: [{ role: "user", content: prompt }],
     });
 
-    const text = response.choices[0].message.content || "";
+    // У части моделей/провайдеров choices может быть пустым — не обращаемся к [0] напрямую
+    const messageContent = response.choices?.[0]?.message?.content;
+    const text = typeof messageContent === "string" ? messageContent : "";
+    if (!text.trim()) {
+      return Response.json(
+        {
+          error:
+            "Модель вернула пустой ответ. Попробуйте ещё раз или смените OPENAI_MODEL в настройках.",
+        },
+        {
+          status: 502,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
 
     let parsed: unknown;
 
@@ -182,8 +196,8 @@ ${input}
       parsed = JSON.parse(text);
     } catch {
       return Response.json(
-        { error: "Ошибка парсинга", raw: text },
-        { headers: { "Cache-Control": "no-store" } },
+        { error: "Не удалось разобрать ответ модели. Попробуйте запрос ещё раз." },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
       );
     }
 

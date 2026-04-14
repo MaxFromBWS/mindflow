@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   HISTORY_STORAGE_KEY,
@@ -37,7 +38,13 @@ const btnGhost =
 const btnDanger =
   "text-xs font-medium text-gray-600 hover:text-red-700 border border-gray-200 hover:border-red-200 rounded-lg px-2 py-1 transition-colors";
 
+function encodeResultForUrl(result: HistoryItem["result"]): string {
+  const json = JSON.stringify(result);
+  return btoa(unescape(encodeURIComponent(json)));
+}
+
 export default function HistoryPage() {
+  const router = useRouter();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -65,6 +72,18 @@ export default function HistoryPage() {
     clearAllHistory();
     setItems([]);
   }, []);
+
+  const openHistoryItem = useCallback(
+    (item: HistoryItem) => {
+      try {
+        const encoded = encodeResultForUrl(item.result);
+        router.push(`/?data=${encodeURIComponent(encoded)}`);
+      } catch {
+        // если запись повреждена, просто игнорируем клик
+      }
+    },
+    [router],
+  );
 
   return (
     <main className="min-h-screen flex flex-col items-center p-8 gap-6">
@@ -94,7 +113,7 @@ export default function HistoryPage() {
           </p>
         ) : (
           <ul className="flex flex-col gap-4">
-            {items.map((item) => {
+            {items.map((item, index) => {
               const modeLabel =
                 item.mode && MODE_LABELS[item.mode]
                   ? MODE_LABELS[item.mode]
@@ -102,8 +121,18 @@ export default function HistoryPage() {
 
               return (
                 <li
-                  key={item.id}
-                  className="p-5 border rounded-xl shadow-sm space-y-2 relative"
+                  key={item.id?.length ? item.id : `row-${index}`}
+                  className="p-5 border rounded-xl shadow-sm space-y-2 relative cursor-pointer transition-colors hover:bg-gray-50"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openHistoryItem(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openHistoryItem(item);
+                    }
+                  }}
+                  aria-label="Открыть результат из истории"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2 pr-0">
                     <div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -118,7 +147,10 @@ export default function HistoryPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeById(item.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeById(item.id);
+                      }}
                       className={`shrink-0 ${btnGhost}`}
                       aria-label="Удалить запись"
                     >
@@ -130,8 +162,13 @@ export default function HistoryPage() {
                   </p>
                   <p className="text-gray-600 text-sm leading-relaxed">
                     <span className="font-semibold text-gray-800">Цель: </span>
-                    {shortGoal(item.result.goal)}
+                    {shortGoal(
+                      typeof item.result?.goal === "string"
+                        ? item.result.goal
+                        : "",
+                    )}
                   </p>
+                  <p className="text-xs text-gray-500">Нажмите, чтобы открыть полный результат</p>
                 </li>
               );
             })}

@@ -441,9 +441,11 @@ export default function HomePage() {
                 {"\u{1F4CC} Шаги"}
               </h3>
               <ul className={resultListClass}>
-                {result.steps.map((step: string, i: number) => (
-                  <li key={i}>{step}</li>
-                ))}
+                {(Array.isArray(result.steps) ? result.steps : []).map(
+                  (step: string, i: number) => (
+                    <li key={i}>{step}</li>
+                  ),
+                )}
               </ul>
             </div>
 
@@ -452,9 +454,11 @@ export default function HomePage() {
                 {"\u{1F6A7} Риски"}
               </h3>
               <ul className={resultListClass}>
-                {result.risks.map((risk: string, i: number) => (
-                  <li key={i}>{risk}</li>
-                ))}
+                {(Array.isArray(result.risks) ? result.risks : []).map(
+                  (risk: string, i: number) => (
+                    <li key={i}>{risk}</li>
+                  ),
+                )}
               </ul>
             </div>
 
