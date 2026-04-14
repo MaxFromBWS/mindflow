@@ -201,8 +201,10 @@ function buildPlanWithToday(result: AnalysisResult): string[] {
 export default function HomePage() {
   const [selectedMode, setSelectedMode] = useState<AnalysisModeId>("career");
   const [input, setInput] = useState("");
+  const [adjustmentInput, setAdjustmentInput] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
@@ -314,6 +316,7 @@ export default function HomePage() {
         setResult(analysis);
         appendHistoryItem(trimmedInput, analysis, selectedMode);
         setInput("");
+        setAdjustmentInput("");
         stripDataParamFromUrl();
       } else {
         setError("Неожиданный формат ответа");
@@ -323,6 +326,78 @@ export default function HomePage() {
       setError("Не удалось выполнить запрос");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAdjustPlan = async () => {
+    const trimmedAdjustment = adjustmentInput.trim();
+    if (!result || !trimmedAdjustment) return;
+
+    setAdjusting(true);
+    setError(null);
+    setActionStatus(null);
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: input.trim() || "Уточнение и корректировка текущего плана",
+          selectedMode,
+          adjustment: trimmedAdjustment,
+          currentResult: result,
+        }),
+      });
+
+      const rawText = await response.text();
+      let data: AnalysisResult | { error?: string };
+      if (!rawText.trim()) {
+        setError(
+          response.ok
+            ? "Пустой ответ сервера"
+            : `Ошибка ${response.status}: пустой ответ`,
+        );
+        return;
+      }
+
+      try {
+        data = JSON.parse(rawText) as AnalysisResult | { error?: string };
+      } catch {
+        setError("Сервер вернул не JSON. Проверьте консоль сервера и перезапустите dev.");
+        return;
+      }
+
+      if (!response.ok) {
+        setError(
+          typeof data === "object" &&
+            data !== null &&
+            "error" in data &&
+            typeof data.error === "string"
+            ? data.error
+            : `Ошибка ${response.status}`,
+        );
+        return;
+      }
+
+      const analysis = normalizeAnalysisResult(data);
+      if (!analysis) {
+        setError("Неожиданный формат ответа");
+        return;
+      }
+
+      setResult(analysis);
+      appendHistoryItem(`Корректировка: ${trimmedAdjustment}`, analysis, selectedMode);
+      setAdjustmentInput("");
+      stripDataParamFromUrl();
+      setActionStatus("План обновлён с учетом уточнений.");
+    } catch (e) {
+      console.error(e);
+      setError("Не удалось скорректировать план");
+    } finally {
+      setAdjusting(false);
     }
   };
 
@@ -373,6 +448,7 @@ export default function HomePage() {
   const handleNewRequest = () => {
     setResult(null);
     setInput("");
+    setAdjustmentInput("");
     setError(null);
     setActionStatus(null);
     stripDataParamFromUrl();
@@ -642,6 +718,27 @@ export default function HomePage() {
             >
               Новый запрос
             </button>
+          </div>
+          <div className="w-full rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              Скорректировать план
+            </p>
+            <textarea
+              value={adjustmentInput}
+              onChange={(e) => setAdjustmentInput(e.target.value)}
+              placeholder="Добавьте уточнение, например: у меня нет бюджета на обучение в ближайшие 2 месяца."
+              className="w-full min-h-24 rounded-lg border border-gray-200 p-3 text-sm text-gray-900"
+            />
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={handleAdjustPlan}
+                disabled={adjusting || !adjustmentInput.trim()}
+                className="px-4 py-2 text-sm bg-black text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {adjusting ? "Обновляем..." : "Обновить план"}
+              </button>
+            </div>
           </div>
         </div>
           );

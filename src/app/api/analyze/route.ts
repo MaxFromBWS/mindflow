@@ -206,6 +206,27 @@ export async function POST(req: Request) {
   const allowedModes = new Set(["career", "business", "life"]);
   const selectedMode = allowedModes.has(rawMode) ? rawMode : "career";
 
+  const adjustment =
+    typeof body === "object" &&
+    body !== null &&
+    "adjustment" in body &&
+    typeof (body as { adjustment: unknown }).adjustment === "string"
+      ? (body as { adjustment: string }).adjustment.trim()
+      : "";
+
+  const currentResultRaw =
+    typeof body === "object" &&
+    body !== null &&
+    "currentResult" in body &&
+    typeof (body as { currentResult: unknown }).currentResult === "object" &&
+    (body as { currentResult: unknown }).currentResult !== null
+      ? (body as { currentResult: unknown }).currentResult
+      : null;
+
+  const currentResult = currentResultRaw
+    ? normalizeAnalysisResponse(currentResultRaw)
+    : null;
+
   const modeHints: Record<string, string> = {
     career: "карьера, работа и профессиональный рост",
     business: "бизнес, проекты, клиенты и монетизация",
@@ -232,6 +253,7 @@ export async function POST(req: Request) {
 `;
 
   const userPrompt = `
+${adjustment ? "Это запрос на корректировку существующего плана." : "Это первичный запрос на анализ цели."}
 Проанализируй запрос пользователя с фокусом: ${modeHint}.
 
 Верни JSON строго такого формата:
@@ -252,9 +274,24 @@ export async function POST(req: Request) {
 - Не давай общих фраз.
 - Каждый пункт должен быть применим на практике.
 - В steps и plan30Days избегай формулировок "подумать", "постараться", "улучшать" без конкретного действия.
+- Если передана корректировка, пересобери план с учетом новых ограничений и обнови ресурсы/риски/ошибки.
 
 Текст пользователя:
 ${input}
+
+${
+  currentResult
+    ? `Текущий план (его нужно скорректировать, а не игнорировать):
+${JSON.stringify(currentResult)}`
+    : ""
+}
+
+${
+  adjustment
+    ? `Дополнительная информация для корректировки:
+${adjustment}`
+    : ""
+}
 
 Служебно (не цитируй в ответе): запрос id ${requestId}.
 `;
