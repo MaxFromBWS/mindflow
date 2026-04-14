@@ -76,6 +76,81 @@ function resolveApiKey(): string | undefined {
   return keyOpenAI || undefined;
 }
 
+type AnalysisApiResponse = {
+  goal: string;
+  problem: string;
+  steps: string[];
+  risks: string[];
+  firstStep: string;
+  plan30Days: string[];
+  metrics: string[];
+  resources: string[];
+  mistakes: string[];
+};
+
+function sanitizeString(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed || fallback;
+}
+
+function sanitizeStringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const items = value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+  return items.length > 0 ? items : fallback;
+}
+
+function normalizeAnalysisResponse(data: unknown): AnalysisApiResponse {
+  const obj =
+    typeof data === "object" && data !== null
+      ? (data as Record<string, unknown>)
+      : {};
+
+  return {
+    goal: sanitizeString(obj.goal, "Сформулировать конкретную цель на ближайшие 30 дней."),
+    problem: sanitizeString(
+      obj.problem,
+      "Недостаточно ясности в приоритетах и следующем практическом действии.",
+    ),
+    steps: sanitizeStringArray(obj.steps, [
+      "Определить конкретный результат на 30 дней с числовым критерием.",
+      "Собрать исходные данные: время, бюджет, текущие ограничения.",
+      "Запланировать 3 обязательных действия в календаре на ближайшую неделю.",
+    ]),
+    risks: sanitizeStringArray(obj.risks, [
+      "Переоценка доступного времени и откладывание ключевых задач.",
+      "Слишком общий план без ежедневных действий и проверок прогресса.",
+    ]),
+    firstStep: sanitizeString(
+      obj.firstStep,
+      "Сегодня выделить 30 минут, записать цель одним предложением и добавить в календарь первое действие на завтра.",
+    ),
+    plan30Days: sanitizeStringArray(obj.plan30Days, [
+      "Неделя 1: уточнить цель, ограничения и ежедневный минимум действий.",
+      "Неделя 2: выполнить базовые шаги и зафиксировать первые промежуточные результаты.",
+      "Неделя 3: усилить темп, устранить узкие места и скорректировать план.",
+      "Неделя 4: закрепить результат, подвести итоги и определить следующий цикл.",
+    ]),
+    metrics: sanitizeStringArray(obj.metrics, [
+      "Количество выполненных запланированных действий за неделю.",
+      "Время, вложенное в ключевую задачу (часы/неделя).",
+      "Измеримый итог: доход, отклики, заявки, встречи или другой релевантный показатель.",
+    ]),
+    resources: sanitizeStringArray(obj.resources, [
+      "Время: минимум 30-60 минут в день на приоритетные действия.",
+      "Навыки: 1-2 ключевых компетенции, которые нужно подтянуть в первую очередь.",
+      "Деньги: минимальный бюджет на инструменты, обучение или тесты.",
+    ]),
+    mistakes: sanitizeStringArray(obj.mistakes, [
+      "Ставить слишком большую цель без недельных контрольных точек.",
+      "Изучать бесконечно и не переходить к действиям.",
+      "Не фиксировать прогресс и не корректировать план раз в неделю.",
+    ]),
+  };
+}
+
 export async function POST(req: Request) {
   const apiKey = resolveApiKey();
   if (!apiKey) {
@@ -139,23 +214,46 @@ export async function POST(req: Request) {
   const modeHint = modeHints[selectedMode] ?? modeHints.career;
 
   const requestId = randomUUID();
-  const prompt = `
-Проанализируй текст пользователя и верни СТРОГО JSON без лишнего текста.
+  const systemPrompt = `
+Ты — практический коуч по достижению результата. Пиши как персональный наставник:
+- без абстракций и мотивационных штампов;
+- только прикладные действия, которые можно выполнить в реальной жизни;
+- советы должны опираться на конкретный текст пользователя.
 
-Формат:
+Требования к качеству:
+1) steps: каждый пункт начинается с глагола действия (например: "Сделать", "Найти", "Рассчитать", "Позвонить", "Записать", "Проверить").
+2) firstStep: выполним за 1 день, максимально конкретен (что сделать, сколько времени, какой результат должен получиться).
+3) plan30Days: подробный план на 30 дней по неделям/этапам, с понятными результатами этапа.
+4) metrics: измеримые показатели прогресса (числа, частота, дедлайны).
+5) resources: нужные ресурсы (время, деньги, навыки, люди/инструменты).
+6) mistakes: частые ошибки именно в таком типе ситуации.
+
+Верни строго JSON-объект без markdown и без пояснений вне JSON.
+`;
+
+  const userPrompt = `
+Проанализируй запрос пользователя с фокусом: ${modeHint}.
+
+Верни JSON строго такого формата:
 {
-  "goal": "краткая цель",
-  "problem": "основная проблема",
-  "steps": ["шаг 1", "шаг 2", "шаг 3"],
+  "goal": "краткая и практичная цель",
+  "problem": "главное ограничение/узкое место",
+  "steps": ["действие 1", "действие 2", "действие 3"],
   "risks": ["риск 1", "риск 2"],
-  "firstStep": "самый простой первый шаг"
+  "firstStep": "конкретное действие на 1 день",
+  "plan30Days": ["этап/неделя 1", "этап/неделя 2", "этап/неделя 3", "этап/неделя 4"],
+  "metrics": ["метрика 1", "метрика 2"],
+  "resources": ["ресурс 1", "ресурс 2"],
+  "mistakes": ["ошибка 1", "ошибка 2"]
 }
 
-Пиши на языке пользователя. Опирайся на конкретные слова и смысл этого текста — не повторяй универсальные шаблоны, если они не следуют из формулировки.
+Ограничения:
+- Пиши на языке пользователя.
+- Не давай общих фраз.
+- Каждый пункт должен быть применим на практике.
+- В steps и plan30Days избегай формулировок "подумать", "постараться", "улучшать" без конкретного действия.
 
-Фокус анализа (обязательно учитывай в трактовке и советах): ${modeHint}.
-
-Текст:
+Текст пользователя:
 ${input}
 
 Служебно (не цитируй в ответе): запрос id ${requestId}.
@@ -171,7 +269,10 @@ ${input}
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       temperature,
       response_format: { type: "json_object" },
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
     });
 
     // У части моделей/провайдеров choices может быть пустым — не обращаемся к [0] напрямую
@@ -201,7 +302,9 @@ ${input}
       );
     }
 
-    return Response.json(parsed, {
+    const normalized = normalizeAnalysisResponse(parsed);
+
+    return Response.json(normalized, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
         Vary: "*",
