@@ -90,6 +90,17 @@ function isRateLimitError(e: unknown): boolean {
   );
 }
 
+function isModelUnavailableError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("404") ||
+    lower.includes("no endpoints found") ||
+    lower.includes("model not found") ||
+    lower.includes("unknown model")
+  );
+}
+
 function resolveModelCandidates(): string[] {
   const base = process.env.OPENAI_BASE_URL?.trim().toLowerCase() ?? "";
   const isOpenRouter = base.includes("openrouter");
@@ -102,11 +113,77 @@ function resolveModelCandidates(): string[] {
   const defaultOpenRouterFree = [
     "openrouter/free",
     "meta-llama/llama-3.1-8b-instruct:free",
-    "google/gemma-2-9b-it:free",
   ];
   const forceFree = (process.env.OPENROUTER_FORCE_FREE ?? "1").trim() !== "0";
   const preferred = isOpenRouter && forceFree ? defaultOpenRouterFree : [];
   return Array.from(new Set([primary, ...fallback, ...preferred]));
+}
+
+type DynamicFreeModelsCache = {
+  models: string[];
+  expiresAt: number;
+};
+
+let dynamicFreeModelsCache: DynamicFreeModelsCache | null = null;
+const DYNAMIC_FREE_MODELS_TTL_MS = 10 * 60 * 1000; // 10 минут
+
+function isOpenRouterBaseUrl(baseUrl: string | undefined): boolean {
+  return (baseUrl ?? "").toLowerCase().includes("openrouter");
+}
+
+async function fetchOpenRouterFreeModels(
+  apiKey: string,
+  baseUrl: string | undefined,
+): Promise<string[]> {
+  if (!isOpenRouterBaseUrl(baseUrl)) return [];
+
+  const now = Date.now();
+  if (dynamicFreeModelsCache && now < dynamicFreeModelsCache.expiresAt) {
+    return dynamicFreeModelsCache.models;
+  }
+
+  const endpointBase = (baseUrl ?? "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+  const modelsUrl = `${endpointBase}/models`;
+
+  try {
+    const response = await fetch(modelsUrl, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+
+    const payload: unknown = await response.json();
+    const list =
+      typeof payload === "object" &&
+      payload !== null &&
+      "data" in payload &&
+      Array.isArray((payload as { data: unknown }).data)
+        ? (payload as { data: unknown[] }).data
+        : [];
+
+    const freeModels = list
+      .map((item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "id" in item &&
+        typeof (item as { id: unknown }).id === "string"
+          ? (item as { id: string }).id.trim()
+          : "",
+      )
+      .filter((id) => id.length > 0 && (id.endsWith(":free") || id === "openrouter/free"));
+
+    const unique = Array.from(new Set(freeModels));
+    dynamicFreeModelsCache = {
+      models: unique,
+      expiresAt: now + DYNAMIC_FREE_MODELS_TTL_MS,
+    };
+    return unique;
+  } catch {
+    return [];
+  }
 }
 
 function resolveRetryDelays(): number[] {
@@ -289,6 +366,28 @@ type AnalysisApiResponse = {
   resources: string[];
   mistakes: string[];
 };
+
+const MODEL_UNAVAILABLE_CACHE = new Map<string, number>();
+const MODEL_UNAVAILABLE_TTL_MS = 10 * 60 * 1000; // 10 минут
+
+function markModelUnavailable(model: string): void {
+  MODEL_UNAVAILABLE_CACHE.set(model, Date.now() + MODEL_UNAVAILABLE_TTL_MS);
+}
+
+function isModelTemporarilyUnavailable(model: string): boolean {
+  const until = MODEL_UNAVAILABLE_CACHE.get(model);
+  if (!until) return false;
+  if (Date.now() > until) {
+    MODEL_UNAVAILABLE_CACHE.delete(model);
+    return false;
+  }
+  return true;
+}
+
+function filterAvailableModels(models: string[]): string[] {
+  const available = models.filter((m) => !isModelTemporarilyUnavailable(m));
+  return available.length > 0 ? available : models;
+}
 
 function sanitizeString(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
@@ -508,12 +607,20 @@ ${adjustment}`
     ? Math.min(2, Math.max(0, tEnv))
     : 0.75;
 
-  const modelCandidates = resolveModelCandidates();
+  const configuredCandidates = resolveModelCandidates();
+  const dynamicFreeCandidates = await fetchOpenRouterFreeModels(
+    apiKey,
+    process.env.OPENAI_BASE_URL,
+  );
+  const modelCandidates = filterAvailableModels(
+    Array.from(new Set([...configuredCandidates, ...dynamicFreeCandidates])),
+  );
   const retryDelaysMs = resolveRetryDelays();
 
   try {
     let lastError: unknown = null;
     let normalized: AnalysisApiResponse | null = null;
+    let modelUnavailableCount = 0;
 
     for (const model of modelCandidates) {
       for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
@@ -549,6 +656,12 @@ ${adjustment}`
           break;
         } catch (e) {
           lastError = e;
+          if (isModelUnavailableError(e)) {
+            modelUnavailableCount += 1;
+            markModelUnavailable(model);
+            // У модели нет активных endpoint'ов — сразу пробуем следующую модель
+            break;
+          }
           const canRetry =
             isRateLimitError(e) && attempt < retryDelaysMs.length;
           if (canRetry) {
@@ -562,6 +675,19 @@ ${adjustment}`
     }
 
     if (!normalized) {
+      if (modelUnavailableCount >= modelCandidates.length) {
+        return Response.json(
+          {
+            error:
+              "Сейчас у выбранных free-моделей OpenRouter нет доступных endpoint'ов (404). " +
+              "Попробуйте позже или укажите другие модели в OPENAI_FALLBACK_MODELS.",
+          },
+          {
+            status: 503,
+            headers: { "Cache-Control": "no-store" },
+          },
+        );
+      }
       if (isRateLimitError(lastError)) {
         const localPlan = buildLocalFallbackPlan(
           input,
