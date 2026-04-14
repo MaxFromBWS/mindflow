@@ -113,6 +113,32 @@ function stripDataParamFromUrl(): void {
   window.history.replaceState({}, "", `${url.pathname}${qs ? `?${qs}` : ""}`);
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // продолжим с fallback
+  }
+
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 const HOW_IT_WORKS_STEPS = [
   {
     emoji: "\u{270F}\u{FE0F}",
@@ -149,8 +175,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
 
   const formSectionRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   // Открытие результата по ссылке ?data=... (без запроса к серверу)
   useEffect(() => {
@@ -176,6 +204,24 @@ export default function HomePage() {
     return () => window.clearTimeout(id);
   }, [result]);
 
+  useEffect(() => {
+    if (!actionStatus) return;
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setActionStatus(null);
+      toastTimerRef.current = null;
+    }, 2600);
+
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, [actionStatus]);
+
   const applyExample = (mode: AnalysisModeId, text: string) => {
     setSelectedMode(mode);
     setInput(text);
@@ -189,6 +235,7 @@ export default function HomePage() {
     setLoading(true);
     setResult(null);
     setError(null);
+    setActionStatus(null);
 
     try {
       const response = await fetch("/api/analyze", {
@@ -259,11 +306,12 @@ export default function HomePage() {
 
   const handleCopyResult = async () => {
     if (!result) return;
-    try {
-      await navigator.clipboard.writeText(formatAnalysisForClipboard(result));
-    } catch {
-      // браузер не дал доступ к буферу
-    }
+    const ok = await copyTextToClipboard(formatAnalysisForClipboard(result));
+    setActionStatus(
+      ok
+        ? "Результат скопирован в буфер."
+        : "Не удалось скопировать автоматически. Проверьте права браузера.",
+    );
   };
 
   // Полная ссылка с ?data=... в адресной строке + копирование в буфер
@@ -274,9 +322,29 @@ export default function HomePage() {
       const url = new URL(window.location.href);
       url.searchParams.set("data", encoded);
       window.history.replaceState({}, "", url.toString());
-      await navigator.clipboard.writeText(url.toString());
+      const shareUrl = url.toString();
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "Результат анализа MindFlow",
+            url: shareUrl,
+          });
+          setActionStatus("Ссылка отправлена.");
+          return;
+        } catch {
+          // если пользователь закрыл системное окно share, просто продолжим с копированием
+        }
+      }
+
+      const copied = await copyTextToClipboard(shareUrl);
+      setActionStatus(
+        copied
+          ? "Ссылка скопирована в буфер."
+          : "Не удалось поделиться автоматически. Скопируйте ссылку из адресной строки.",
+      );
     } catch {
-      // неверный URL или нет доступа к буферу
+      setActionStatus("Не удалось подготовить ссылку для отправки.");
     }
   };
 
@@ -284,6 +352,7 @@ export default function HomePage() {
     setResult(null);
     setInput("");
     setError(null);
+    setActionStatus(null);
     stripDataParamFromUrl();
     formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -499,6 +568,15 @@ export default function HomePage() {
           </div>
         </div>
       )}
+      {actionStatus ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 right-5 z-50 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-lg"
+        >
+          {actionStatus}
+        </div>
+      ) : null}
     </main>
   );
 }
