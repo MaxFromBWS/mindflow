@@ -222,6 +222,210 @@ function resolveMaxModelsToTry(): number {
   return Math.max(1, Math.min(12, Math.floor(env)));
 }
 
+function shouldUseAllOpenRouterFree(): boolean {
+  return (process.env.OPENROUTER_USE_ALL_FREE ?? "1").trim() !== "0";
+}
+
+function parseModelsEnv(raw: string | undefined, defaults: string[]): string[] {
+  const list = (raw ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0);
+  return Array.from(new Set(list.length > 0 ? list : defaults));
+}
+
+function extractTextFromOpenAILikeResponse(response: {
+  choices?: Array<{ message?: { content?: unknown } }>;
+}): string {
+  const messageContent = response.choices?.[0]?.message?.content;
+  return typeof messageContent === "string" ? messageContent : "";
+}
+
+async function callGeminiJson(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+  temperature: number,
+): Promise<string> {
+  const combinedPrompt = `${systemPrompt.trim()}\n\n${userPrompt.trim()}`;
+  const payloadBody = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: combinedPrompt }],
+      },
+    ],
+    generationConfig: {
+      temperature,
+    },
+  };
+
+  const versions = ["v1beta", "v1"] as const;
+  let lastError = "";
+
+  for (const version of versions) {
+    const url =
+      `https://generativelanguage.googleapis.com/${version}/models/${encodeURIComponent(model)}:generateContent` +
+      `?key=${encodeURIComponent(apiKey)}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadBody),
+      signal: AbortSignal.timeout(15000),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const raw = await response.text();
+      lastError = `Gemini ${response.status}: ${raw}`;
+      continue;
+    }
+
+    const payload: unknown = await response.json();
+    const text =
+      typeof payload === "object" &&
+      payload !== null &&
+      "candidates" in payload &&
+      Array.isArray((payload as { candidates: unknown }).candidates) &&
+      (payload as { candidates: unknown[] }).candidates.length > 0 &&
+      typeof (payload as { candidates: unknown[] }).candidates[0] === "object" &&
+      (payload as { candidates: unknown[] }).candidates[0] !== null &&
+      "content" in ((payload as { candidates: unknown[] }).candidates[0] as object) &&
+      typeof ((payload as { candidates: unknown[] }).candidates[0] as { content?: unknown }).content ===
+        "object" &&
+      ((payload as { candidates: unknown[] }).candidates[0] as { content?: unknown }).content !== null &&
+      "parts" in (((payload as { candidates: unknown[] }).candidates[0] as { content: unknown }).content as object) &&
+      Array.isArray(
+        (((payload as { candidates: unknown[] }).candidates[0] as { content: { parts?: unknown } }).content.parts),
+      )
+        ? ((((payload as { candidates: unknown[] }).candidates[0] as {
+            content: { parts: Array<{ text?: unknown }> };
+          }).content.parts[0]?.text as string) ?? "")
+        : "";
+
+    return typeof text === "string" ? text : "";
+  }
+
+  throw new Error(lastError || "Gemini: не удалось получить ответ.");
+}
+
+type GeminiModelCandidate = { model: string; apiVersion: "v1beta" | "v1" };
+
+async function fetchGeminiAvailableModels(
+  apiKey: string,
+): Promise<GeminiModelCandidate[]> {
+  const versions: Array<"v1beta" | "v1"> = ["v1beta", "v1"];
+  const out: GeminiModelCandidate[] = [];
+
+  for (const version of versions) {
+    const url = `https://generativelanguage.googleapis.com/${version}/models?key=${encodeURIComponent(apiKey)}`;
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        signal: AbortSignal.timeout(5000),
+        cache: "no-store",
+      });
+      if (!response.ok) continue;
+      const payload: unknown = await response.json();
+      const list =
+        typeof payload === "object" &&
+        payload !== null &&
+        "models" in payload &&
+        Array.isArray((payload as { models: unknown }).models)
+          ? (payload as { models: unknown[] }).models
+          : [];
+
+      for (const item of list) {
+        if (typeof item !== "object" || item === null) continue;
+        const name =
+          "name" in item && typeof (item as { name?: unknown }).name === "string"
+            ? (item as { name: string }).name
+            : "";
+        const methods =
+          "supportedGenerationMethods" in item &&
+          Array.isArray((item as { supportedGenerationMethods?: unknown }).supportedGenerationMethods)
+            ? (item as { supportedGenerationMethods: unknown[] }).supportedGenerationMethods
+            : [];
+        const canGenerate = methods.some((m) => m === "generateContent");
+        if (!canGenerate) continue;
+        const model = name.replace(/^models\//, "").trim();
+        if (!model) continue;
+        out.push({ model, apiVersion: version });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  const unique = new Map<string, GeminiModelCandidate>();
+  for (const candidate of out) {
+    const key = `${candidate.apiVersion}:${candidate.model}`;
+    if (!unique.has(key)) unique.set(key, candidate);
+  }
+  return Array.from(unique.values());
+}
+
+async function callGeminiJsonWithVersion(
+  apiKey: string,
+  apiVersion: "v1beta" | "v1",
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+  temperature: number,
+): Promise<string> {
+  const combinedPrompt = `${systemPrompt.trim()}\n\n${userPrompt.trim()}`;
+  const payloadBody = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: combinedPrompt }],
+      },
+    ],
+    generationConfig: {
+      temperature,
+    },
+  };
+  const url =
+    `https://generativelanguage.googleapis.com/${apiVersion}/models/${encodeURIComponent(model)}:generateContent` +
+    `?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payloadBody),
+    signal: AbortSignal.timeout(15000),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new Error(`Gemini ${response.status}: ${raw}`);
+  }
+  const payload: unknown = await response.json();
+  const text =
+    typeof payload === "object" &&
+    payload !== null &&
+    "candidates" in payload &&
+    Array.isArray((payload as { candidates: unknown }).candidates) &&
+    (payload as { candidates: unknown[] }).candidates.length > 0 &&
+    typeof (payload as { candidates: unknown[] }).candidates[0] === "object" &&
+    (payload as { candidates: unknown[] }).candidates[0] !== null &&
+    "content" in ((payload as { candidates: unknown[] }).candidates[0] as object) &&
+    typeof ((payload as { candidates: unknown[] }).candidates[0] as { content?: unknown }).content ===
+      "object" &&
+    ((payload as { candidates: unknown[] }).candidates[0] as { content?: unknown }).content !== null &&
+    "parts" in (((payload as { candidates: unknown[] }).candidates[0] as { content: unknown }).content as object) &&
+    Array.isArray(
+      (((payload as { candidates: unknown[] }).candidates[0] as { content: { parts?: unknown } }).content.parts),
+    )
+      ? ((((payload as { candidates: unknown[] }).candidates[0] as {
+          content: { parts: Array<{ text?: unknown }> };
+        }).content.parts[0]?.text as string) ?? "")
+      : "";
+
+  return typeof text === "string" ? text : "";
+}
+
 function estimateTimeframe(input: string, adjustment: string): string {
   const text = `${input} ${adjustment}`.toLowerCase();
   if (
@@ -612,15 +816,23 @@ ${adjustment}`
     process.env.OPENAI_BASE_URL,
   );
   const maxModelsToTry = resolveMaxModelsToTry();
-  const modelCandidates = filterAvailableModels(
+  const baseModelCandidates = filterAvailableModels(
     Array.from(new Set([...configuredCandidates, ...dynamicFreeCandidates])),
-  ).slice(0, maxModelsToTry);
+  );
+  const useAllFreeModels =
+    isOpenRouterBaseUrl(process.env.OPENAI_BASE_URL) && shouldUseAllOpenRouterFree();
+  const modelCandidates = useAllFreeModels
+    ? baseModelCandidates
+    : baseModelCandidates.slice(0, maxModelsToTry);
   const retryDelaysMs = resolveRetryDelays();
   const globalBudgetMs = resolveGlobalBudgetMs();
   const startedAt = Date.now();
   const progressHeader = {
-    "X-Mindflow-Max-Models": String(maxModelsToTry),
+    "X-Mindflow-Max-Models": String(modelCandidates.length),
   };
+  const strictRemoteOnly = (process.env.OPENAI_STRICT_REMOTE_ONLY ?? "1").trim() !== "0";
+  const enableLocalFallback = (process.env.OPENAI_ENABLE_LOCAL_FALLBACK ?? "0").trim() === "1";
+  const providerErrors: string[] = [];
 
   try {
     let lastError: unknown = null;
@@ -686,12 +898,126 @@ ${adjustment}`
     }
 
     if (!normalized) {
-      if (modelUnavailableCount >= modelCandidates.length) {
+      providerErrors.push(
+        modelUnavailableCount >= modelCandidates.length
+          ? "OpenRouter free: нет доступных endpoint'ов."
+          : `OpenRouter free: ${formatProviderError(lastError)}`,
+      );
+
+      // 2) Groq fallback (если задан ключ)
+      const groqKey = process.env.GROQ_API_KEY?.trim();
+      if (groqKey) {
+        const groq = new OpenAI({
+          apiKey: groqKey,
+          baseURL: "https://api.groq.com/openai/v1",
+        });
+        const groqModels = parseModelsEnv(process.env.GROQ_MODELS, [
+          "llama-3.1-8b-instant",
+          "llama-3.3-70b-versatile",
+        ]);
+
+        for (const model of groqModels) {
+          try {
+            const response = await groq.chat.completions.create({
+              model,
+              temperature,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+            });
+            const text = extractTextFromOpenAILikeResponse(response);
+            if (!text.trim()) continue;
+            const parsed = JSON.parse(text) as unknown;
+            normalized = normalizeAnalysisResponse(parsed);
+            break;
+          } catch (e) {
+            lastError = e;
+            continue;
+          }
+        }
+        if (!normalized) {
+          providerErrors.push(`Groq: ${formatProviderError(lastError)}`);
+        }
+      } else {
+        providerErrors.push("Groq: API ключ не задан.");
+      }
+
+      // 3) Gemini fallback (если задан ключ)
+      if (!normalized) {
+        const geminiKey = process.env.GEMINI_API_KEY?.trim();
+        if (geminiKey) {
+          const configuredGeminiModels = parseModelsEnv(process.env.GEMINI_MODELS, [
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+          ]);
+          const availableGemini = await fetchGeminiAvailableModels(geminiKey);
+          const configuredAvailable = availableGemini.filter((c) =>
+            configuredGeminiModels.includes(c.model),
+          );
+
+          const candidatesToTry =
+            configuredAvailable.length > 0
+              ? configuredAvailable
+              : availableGemini.length > 0
+                ? availableGemini
+                : configuredGeminiModels.flatMap((model) => [
+                    { model, apiVersion: "v1beta" as const },
+                    { model, apiVersion: "v1" as const },
+                  ]);
+
+          for (const candidate of candidatesToTry) {
+            try {
+              const text = await callGeminiJsonWithVersion(
+                geminiKey,
+                candidate.apiVersion,
+                candidate.model,
+                systemPrompt,
+                userPrompt,
+                temperature,
+              );
+              if (!text.trim()) continue;
+              const parsed = JSON.parse(text) as unknown;
+              normalized = normalizeAnalysisResponse(parsed);
+              break;
+            } catch (e) {
+              lastError = e;
+              continue;
+            }
+          }
+          if (!normalized) {
+            providerErrors.push(`Gemini: ${formatProviderError(lastError)}`);
+          }
+        } else {
+          providerErrors.push("Gemini: API ключ не задан.");
+        }
+      }
+
+      if (!normalized) {
+        if (enableLocalFallback && !strictRemoteOnly) {
+          const localPlan = buildLocalFallbackPlan(
+            input,
+            modeHint,
+            adjustment,
+            currentResult,
+          );
+          return Response.json(localPlan, {
+            headers: {
+              "Cache-Control": "no-store, max-age=0",
+              Vary: "*",
+              ...progressHeader,
+            },
+          });
+        }
+
         return Response.json(
           {
             error:
-              "Сейчас у выбранных free-моделей OpenRouter нет доступных endpoint'ов (404). " +
-              "Попробуйте позже или укажите другие модели в OPENAI_FALLBACK_MODELS.",
+              "Сейчас не удалось получить ответ от удаленных AI-провайдеров. " +
+              `Детали: ${providerErrors.join(" | ")}`,
           },
           {
             status: 503,
@@ -699,24 +1025,6 @@ ${adjustment}`
           },
         );
       }
-      if (isRateLimitError(lastError)) {
-        const localPlan = buildLocalFallbackPlan(
-          input,
-          modeHint,
-          adjustment,
-          currentResult,
-        );
-        return Response.json(localPlan, {
-          headers: {
-            "Cache-Control": "no-store, max-age=0",
-            Vary: "*",
-            ...progressHeader,
-          },
-        });
-      }
-      throw lastError instanceof Error
-        ? lastError
-        : new Error("Не удалось получить ответ модели.");
     }
 
     return Response.json(normalized, {
