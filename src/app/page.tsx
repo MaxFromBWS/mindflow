@@ -74,7 +74,7 @@ function formatAnalysisForClipboard(r: AnalysisResult): string {
     risksBlock,
     "",
     "Срок",
-    r.timeframe,
+    typeof r.timeframe === "string" ? r.timeframe : "",
     "",
     "План",
     planBlock,
@@ -189,7 +189,7 @@ function stripStagePrefix(rawStep: string): string {
 
 function buildPlanWithToday(result: AnalysisResult): string[] {
   const plan = Array.isArray(result.plan) ? result.plan : [];
-  const firstStep = result.firstStep.trim();
+  const firstStep = typeof result.firstStep === "string" ? result.firstStep.trim() : "";
   if (!firstStep) return plan;
 
   const normalizedFirst = firstStep.toLowerCase();
@@ -458,6 +458,10 @@ export default function HomePage() {
     formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const safeTimeframe =
+    result && typeof result.timeframe === "string" ? result.timeframe.trim() : "";
+  const planWithToday = result ? buildPlanWithToday(result) : [];
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8 gap-6">
       <h1 className="text-4xl font-bold">MindFlow</h1>
@@ -578,9 +582,6 @@ export default function HomePage() {
       )}
 
       {result && (
-        (() => {
-          const planWithToday = buildPlanWithToday(result);
-          return (
         <div
           className={`w-full max-w-4xl mt-6 flex flex-col gap-6 transition-all duration-500 ease-out ${
             resultVisible
@@ -635,20 +636,22 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className={resultCardMuted}>
-              <h3 className={resultCardTitleClass}>
-                {"\u{23F3} Срок"}
-              </h3>
-              <p className={resultBodyClass}>{result.timeframe}</p>
-            </div>
+            {safeTimeframe ? (
+              <div className={resultCardMuted}>
+                <h3 className={resultCardTitleClass}>
+                  {"\u{23F3} Срок"}
+                </h3>
+                <p className={resultBodyClass}>{safeTimeframe}</p>
+              </div>
+            ) : null}
 
-            <div className={resultCardMuted}>
-              <h3 className={resultCardTitleClass}>
-                {"\u{1F4C5} План по этапам"}
-              </h3>
-              <ol className="space-y-3">
-                {planWithToday.map(
-                  (step: string, i: number) => (
+            {planWithToday.length > 0 ? (
+              <div className={resultCardMuted}>
+                <h3 className={resultCardTitleClass}>
+                  {"\u{1F4C5} План реализации"}
+                </h3>
+                <ol className="space-y-3">
+                  {planWithToday.map((step: string, i: number) => (
                     <li key={i} className="relative pl-4">
                       <span
                         aria-hidden
@@ -661,10 +664,10 @@ export default function HomePage() {
                         {stripStagePrefix(step) || step}
                       </p>
                     </li>
-                  ),
-                )}
-              </ol>
-            </div>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
 
             <div className={resultCardMuted}>
               <h3 className={resultCardTitleClass}>
@@ -703,6 +706,17 @@ export default function HomePage() {
                   ),
                 )}
               </ul>
+            </div>
+
+            <div
+              className={`${resultCardShell} md:col-span-2 border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-800 text-white shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]`}
+            >
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-white/70 mb-3">
+                {"\u{1F680} Первый шаг"}
+              </h3>
+              <p className="text-white leading-relaxed text-[1.02rem] font-medium">
+                {result.firstStep}
+              </p>
             </div>
           </div>
 
@@ -751,8 +765,6 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-          );
-        })()
       )}
       {actionStatus ? (
         <div
