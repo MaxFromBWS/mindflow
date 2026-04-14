@@ -34,9 +34,9 @@ function shortGoal(goal: string, maxChars = 140): string {
 }
 
 const btnGhost =
-  "text-xs font-medium text-gray-500 hover:text-gray-900 border border-transparent hover:border-gray-200 rounded-lg px-2 py-1 transition-colors";
+  "text-xs font-medium text-slate-400 hover:text-cyan-100 border border-transparent hover:border-cyan-300/25 rounded-lg px-2 py-1 transition-all duration-300";
 const btnDanger =
-  "text-xs font-medium text-gray-600 hover:text-red-700 border border-gray-200 hover:border-red-200 rounded-lg px-2 py-1 transition-colors";
+  "text-xs font-medium text-slate-300 hover:text-rose-200 border border-white/15 hover:border-rose-300/35 rounded-lg px-2 py-1 transition-all duration-300";
 
 function encodeResultForUrl(result: HistoryItem["result"]): string {
   const json = JSON.stringify(result);
@@ -86,10 +86,20 @@ export default function HistoryPage() {
   );
 
   return (
-    <main className="min-h-screen flex flex-col items-center p-8 gap-6">
-      <div className="w-full max-w-2xl flex flex-col gap-6">
+    <main className="relative min-h-screen overflow-x-clip bg-[#07090f] text-slate-100">
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-80">
+        <div className="absolute -top-40 left-1/2 h-[28rem] w-[40rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.2),rgba(99,102,241,0.12),transparent_68%)] blur-2xl" />
+        <div className="absolute -left-24 bottom-8 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.16),transparent_68%)] blur-3xl" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold">История запросов</h1>
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
+              MindFlow
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight">История запросов</h1>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             {loaded && items.length > 0 ? (
               <button type="button" onClick={clearEverything} className={btnDanger}>
@@ -98,7 +108,7 @@ export default function HistoryPage() {
             ) : null}
             <Link
               href="/"
-              className="text-sm text-gray-600 underline underline-offset-2 hover:text-black"
+              className="rounded-lg border border-white/15 bg-white/[0.03] px-3 py-1.5 text-sm text-slate-200 transition-all duration-300 hover:border-cyan-300/35 hover:bg-cyan-300/[0.08]"
             >
               На главную
             </Link>
@@ -106,9 +116,11 @@ export default function HistoryPage() {
         </div>
 
         {!loaded ? (
-          <p className="text-gray-500 text-center py-8">Загрузка…</p>
+          <p className="rounded-2xl border border-white/10 bg-white/[0.03] py-8 text-center text-slate-300">
+            Загрузка…
+          </p>
         ) : items.length === 0 ? (
-          <p className="text-gray-500 text-center py-12 px-6 border rounded-xl bg-white">
+          <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-12 text-center text-slate-300">
             История пока пуста
           </p>
         ) : (
@@ -122,7 +134,7 @@ export default function HistoryPage() {
               return (
                 <li
                   key={item.id?.length ? item.id : `row-${index}`}
-                  className="p-5 border rounded-xl shadow-sm space-y-2 relative cursor-pointer transition-colors hover:bg-gray-50"
+                  className="relative space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-5 shadow-[0_10px_40px_-24px_rgba(56,189,248,0.45)] cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-white/[0.05]"
                   role="button"
                   tabIndex={0}
                   onClick={() => openHistoryItem(item)}
@@ -136,11 +148,11 @@ export default function HistoryPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2 pr-0">
                     <div className="flex flex-wrap items-center gap-2 min-w-0">
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-400">
                         {formatCreatedAt(item.createdAt)}
                       </p>
                       {modeLabel ? (
-                        <span className="inline-block rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                        <span className="inline-block rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2 py-0.5 text-[11px] font-medium text-cyan-100/90">
                           {modeLabel}
                         </span>
                       ) : null}
@@ -157,18 +169,18 @@ export default function HistoryPage() {
                       Удалить
                     </button>
                   </div>
-                  <p className="font-medium text-gray-900 whitespace-pre-wrap">
+                  <p className="whitespace-pre-wrap font-medium text-slate-100">
                     {item.input}
                   </p>
-                  <p className="text-gray-600 text-sm leading-relaxed">
-                    <span className="font-semibold text-gray-800">Цель: </span>
+                  <p className="text-sm leading-relaxed text-slate-300">
+                    <span className="font-semibold text-slate-100">Цель: </span>
                     {shortGoal(
                       typeof item.result?.goal === "string"
                         ? item.result.goal
                         : "",
                     )}
                   </p>
-                  <p className="text-xs text-gray-500">Нажмите, чтобы открыть полный результат</p>
+                  <p className="text-xs text-slate-400">Нажмите, чтобы открыть полный результат</p>
                 </li>
               );
             })}
